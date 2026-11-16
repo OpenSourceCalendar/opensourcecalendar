@@ -20,6 +20,16 @@
 
 ---
 
+<p align="center">
+  <img src="public/screenshots/schedule.png" width="720" alt="The owner's week schedule, with appointments laid out by day and time">
+</p>
+<p align="center">
+  <img src="public/screenshots/booking-phone.png" height="440" alt="The booking page on a phone, with a day and time picked">
+  &nbsp;&nbsp;
+  <img src="public/screenshots/dashboard.png" width="520" alt="The owner's dashboard: today's appointments, totals and recent customers">
+</p>
+<p align="center"><sub>Screens from a demo business. All names and numbers are made up.</sub></p>
+
 ## What it is
 
 Open Source Calendar is an **online booking system** for any business that takes appointments: plumbers, salons, clinics, tutors, consultants, and the agencies that run their websites. Each business gets a booking page where customers pick a service and a time. The owner manages the schedule, services, hours and customers from a simple dashboard.

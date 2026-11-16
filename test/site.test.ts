@@ -26,6 +26,13 @@ describe("website pages", () => {
     expect(body).toContain('href="/terms"');
   });
 
+  it("shows real screenshots of the booking page, schedule and dashboard", async () => {
+    const body = await (await app.request("/", {}, siteOn)).text();
+    for (const file of ["booking-phone.png", "schedule.png", "dashboard.png"]) {
+      expect(body).toMatch(new RegExp(`<img src="/screenshots/${file.replace(".", "\\.")}"[^>]* alt="[^"]+"`));
+    }
+  });
+
   it("shows the waitlist result only for known states", async () => {
     expect(await (await app.request("/?waitlist=joined", {}, siteOn)).text()).toContain("You’re on the list");
     expect(await (await app.request("/?waitlist=bad", {}, siteOn)).text()).toContain("doesn’t look right");

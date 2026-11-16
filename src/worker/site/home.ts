@@ -52,7 +52,6 @@ const WAIT_MSG: Record<Exclude<WaitlistState, null>, string> = {
 };
 
 export function homePage(wait: WaitlistState) {
-  const times = ["8:00", "8:30", "9:30", "10:00", "10:30", "11:30"].map((t) => `<span${t === "9:30" ? ' class="on"' : ""}>${t}</span>`).join("");
   const band = `<div class="wrap hero">
 <div class="hero-text">
 <span class="pill">Open source · AGPL-3.0 · Runs on Cloudflare</span>
@@ -61,10 +60,7 @@ export function homePage(wait: WaitlistState) {
 <div class="actions"><a class="btn btn-light" href="${GITHUB_URL}">${GITHUB_ICON}Get it free on GitHub</a><a class="btn btn-ghost" href="#waitlist">Join the hosted waitlist</a></div>
 <span class="small">Hosted plans launch soon. The Free plan needs no card; paid plans start with a 14-day free trial.</span>
 </div>
-<div class="phone" aria-hidden="true">
-<div class="phone-top"><div class="phone-biz"><span>DP</span>Demo Plumbing</div><div class="phone-q">When should we come by?</div></div>
-<div class="phone-body"><span class="phone-label">Morning</span><div class="times">${times}</div><span class="phone-cta">Book 9:30 AM</span></div>
-</div>
+<div class="phone"><img src="/screenshots/booking-phone.png" width="780" height="2106" alt="A booking page on a phone: the customer has picked drain cleaning on Wednesday, November 18 at 10:30 AM"></div>
 </div>`;
 
   const features = FEATURES.map(([t, p], i) => `<div class="card"><span class="num">${String(i + 1).padStart(2, "0")}</span><h3>${t}</h3><p>${p}</p></div>`).join("");
@@ -80,6 +76,14 @@ export function homePage(wait: WaitlistState) {
   const msg = wait ? `<p class="msg" role="status">${WAIT_MSG[wait]}</p>` : "";
 
   const body = `<div class="sections">
+<section aria-labelledby="h-shots" class="wrap">
+<div class="intro"><h2 id="h-shots">Your whole week in one place</h2><p>See every booking at a glance, and what’s next today. These are real screens from a demo business.</p></div>
+<div class="shots">
+<figure><img src="/screenshots/schedule.png" width="2880" height="1800" loading="lazy" alt="The owner’s week schedule, with a dozen appointments laid out by day and time"><figcaption>The schedule: month, week or day.</figcaption></figure>
+<figure><img src="/screenshots/dashboard.png" width="2880" height="1800" loading="lazy" alt="The owner’s dashboard: today’s appointments, this week’s totals and recent customers"><figcaption>The dashboard: today at a glance.</figcaption></figure>
+</div>
+</section>
+
 <section id="features" aria-labelledby="h-features" class="wrap">
 <div class="intro"><h2 id="h-features">Everything you need to take bookings</h2><p>For any business that takes appointments, from one person to a whole team.</p></div>
 <div class="grid">${features}</div>

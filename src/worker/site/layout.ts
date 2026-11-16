@@ -36,17 +36,12 @@ h1{margin:0;font-size:clamp(38px,6vw,56px);line-height:1.05;font-weight:800;lett
 .lead{margin:0;font-size:19px;line-height:1.55;max-width:34em}
 .actions{display:flex;flex-wrap:wrap;gap:12px}
 .small{font-size:14px;opacity:.9}
-.phone{flex:1 1 300px;max-width:340px;margin:0 auto;background:#fff;color:var(--ink);border-radius:32px;box-shadow:0 30px 60px -24px rgba(15,23,42,.5);overflow:hidden}
-.phone-top{background:#0e7490;color:#fff;padding:18px 18px 30px;display:flex;flex-direction:column;gap:10px}
-.phone-biz{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px}
-.phone-biz span{width:34px;height:34px;border-radius:11px;background:#fff;color:#0e7490;font-weight:800;font-size:13px;display:grid;place-items:center}
-.phone-q{font-size:22px;font-weight:800;line-height:1.15}
-.phone-body{margin-top:-18px;background:#fff;border-radius:22px 22px 0 0;padding:16px;display:flex;flex-direction:column;gap:10px}
-.phone-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.times{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
-.times span{height:34px;border-radius:999px;display:grid;place-items:center;font-size:13px;font-weight:600;border:2px solid var(--line)}
-.times .on{background:#0e7490;color:#fff;border-color:#0e7490}
-.phone-cta{margin-top:6px;height:42px;border-radius:12px;background:#0e7490;color:#fff;font-weight:700;font-size:14px;display:grid;place-items:center}
+.phone{flex:1 1 260px;max-width:300px;margin:0 auto;border-radius:32px;box-shadow:0 30px 60px -24px rgba(15,23,42,.5);overflow:hidden;background:#fff}
+.phone img{display:block;width:100%;height:auto}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:24px}
+.shots figure{margin:0;display:flex;flex-direction:column;gap:10px}
+.shots img{display:block;width:100%;height:auto;border-radius:16px;border:1px solid var(--line);box-shadow:0 20px 40px -24px rgba(15,23,42,.35)}
+.shots figcaption{font-size:15px;color:var(--muted)}
 main{display:block}
 .sheet{margin-top:-40px;background:var(--bg);border-radius:32px 32px 0 0;padding-top:72px;position:relative}
 .sections{display:flex;flex-direction:column;gap:96px}
