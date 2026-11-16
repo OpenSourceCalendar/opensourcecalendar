@@ -48,6 +48,11 @@ h1{margin:0;font-size:clamp(38px,6vw,56px);line-height:1.05;font-weight:800;lett
 .gallery a{display:flex;flex-direction:column;gap:8px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
 .gallery img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line);box-shadow:0 12px 24px -16px rgba(15,23,42,.35);transition:transform .15s}
 .gallery a:hover img{transform:translateY(-2px)}
+.lightbox{padding:0;border:0;background:transparent;max-width:94vw;max-height:92vh;overflow:visible}
+.lightbox::backdrop{background:rgba(15,23,42,.82)}
+.lightbox img{display:block;max-width:min(1400px,94vw);max-height:88vh;width:auto;height:auto;border-radius:12px;box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
+.lb-close{position:fixed;top:16px;right:16px;width:48px;height:48px;border-radius:999px;border:0;background:#fff;color:var(--ink);font-size:30px;line-height:1;cursor:pointer;display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.3)}
+.lb-close:hover{background:#e2e8f0}
 main{display:block}
 .sheet{margin-top:-40px;background:var(--bg);border-radius:32px 32px 0 0;padding-top:72px;position:relative}
 .sections{display:flex;flex-direction:column;gap:96px}

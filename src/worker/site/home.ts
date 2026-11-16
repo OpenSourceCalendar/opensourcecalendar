@@ -89,7 +89,7 @@ export function homePage(wait: WaitlistState) {
 </div>`).join("");
   const faq = FAQ.map(([q, a]) => `<div class="card"><h3>${q}</h3><p>${a}</p></div>`).join("");
   const gallery = GALLERY.map((g) => `<h3 class="gal-title">${g.title}</h3>
-<div class="gallery${g.phone ? " phones" : ""}">${g.shots.map(([file, cap, alt]) => `<a href="/screenshots/${file}.png"><img src="/screenshots/${file}.png" width="${g.phone ? 780 : 2880}" height="${g.phone ? 1688 : 1800}" loading="lazy" alt="${alt}"><span>${cap}</span></a>`).join("")}</div>`).join("\n");
+<div class="gallery${g.phone ? " phones" : ""}">${g.shots.map(([file, cap, alt]) => `<a href="/screenshots/${file}.png" data-shot><img src="/screenshots/${file}.png" width="${g.phone ? 780 : 2880}" height="${g.phone ? 1688 : 1800}" loading="lazy" alt="${alt}"><span>${cap}</span></a>`).join("")}</div>`).join("\n");
   const msg = wait ? `<p class="msg" role="status">${WAIT_MSG[wait]}</p>` : "";
 
   const body = `<div class="sections">
@@ -101,6 +101,28 @@ export function homePage(wait: WaitlistState) {
 </div>
 ${gallery}
 </section>
+
+<dialog id="shot" class="lightbox" aria-label="Screenshot">
+<button type="button" class="lb-close" aria-label="Close">×</button>
+<img alt="">
+</dialog>
+<script>
+(() => {
+  const d = document.getElementById("shot");
+  if (!d || !d.showModal) return; // no dialog support: the links just open the image
+  const img = d.querySelector("img");
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("a[data-shot]");
+    if (!a) return;
+    e.preventDefault();
+    img.src = a.href;
+    img.alt = a.querySelector("img")?.alt || "";
+    d.showModal();
+  });
+  // The × button and any click off the picture close it; Esc closes a dialog on its own.
+  d.addEventListener("click", (e) => { if (e.target !== img) d.close(); });
+})();
+</script>
 
 <section id="features" aria-labelledby="h-features" class="wrap">
 <div class="intro"><h2 id="h-features">Everything you need to take bookings</h2><p>For any business that takes appointments, from one person to a whole team.</p></div>

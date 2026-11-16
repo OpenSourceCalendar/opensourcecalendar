@@ -34,11 +34,18 @@ describe("website pages", () => {
     }
   });
 
+  it("opens gallery screenshots in a viewer that can be closed", async () => {
+    const body = await (await app.request("/", {}, siteOn)).text();
+    expect(body).toMatch(/<a href="\/screenshots\/customer-service\.png" data-shot>/);
+    expect(body).toMatch(/<dialog id="shot"[^>]*>\s*<button type="button" class="lb-close" aria-label="Close">/);
+    expect(body).toContain("showModal");
+  });
+
   it("shows the waitlist result only for known states", async () => {
     expect(await (await app.request("/?waitlist=joined", {}, siteOn)).text()).toContain("You’re on the list");
     expect(await (await app.request("/?waitlist=bad", {}, siteOn)).text()).toContain("doesn’t look right");
-    const other = await (await app.request("/?waitlist=<script>", {}, siteOn)).text();
-    expect(other).not.toContain("<script>");
+    const other = await (await app.request("/?waitlist=<script>evil()</script>", {}, siteOn)).text();
+    expect(other).not.toContain("evil()");
     expect(other).not.toContain('role="status"');
   });
 
