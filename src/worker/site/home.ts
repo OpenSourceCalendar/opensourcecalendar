@@ -44,6 +44,21 @@ const FAQ: [string, string][] = [
   ["Can my agency resell it?", "Yes. The White-label plan removes our name and lets you run unlimited client businesses under your brand."],
 ];
 
+const GALLERY: { title: string; phone: boolean; shots: [string, string, string][] }[] = [
+  { title: "What your customers see", phone: true, shots: [
+    ["customer-service", "Pick a service", "Step 1 of booking: a list of services with their length and price"],
+    ["customer-details", "Add their details", "The last booking step: name and phone, with the chosen time shown above"],
+    ["customer-confirmed", "Booked", "The confirmation screen, with buttons to add the visit to Google or Apple calendar"],
+    ["customer-manage", "Change or cancel", "The customer’s own page to pick a new time or cancel"],
+  ] },
+  { title: "What you see", phone: false, shots: [
+    ["owner-services", "Services", "The services list: each service with its length and price"],
+    ["owner-customers", "Customers", "The customer list, searchable by name, phone or email"],
+    ["owner-branding", "Branding", "Branding settings with a live preview of the booking page"],
+    ["owner-share", "Share & promote", "Your booking link, a website button and embed code"],
+  ] },
+];
+
 export type WaitlistState = "joined" | "bad" | null;
 
 const WAIT_MSG: Record<Exclude<WaitlistState, null>, string> = {
@@ -73,6 +88,8 @@ export function homePage(wait: WaitlistState) {
 <a class="btn ${p.hi ? "btn-brand" : "btn-plain"}" href="${p.href}">${p.cta}</a>
 </div>`).join("");
   const faq = FAQ.map(([q, a]) => `<div class="card"><h3>${q}</h3><p>${a}</p></div>`).join("");
+  const gallery = GALLERY.map((g) => `<h3 class="gal-title">${g.title}</h3>
+<div class="gallery${g.phone ? " phones" : ""}">${g.shots.map(([file, cap, alt]) => `<a href="/screenshots/${file}.png"><img src="/screenshots/${file}.png" width="${g.phone ? 780 : 2880}" height="${g.phone ? 1688 : 1800}" loading="lazy" alt="${alt}"><span>${cap}</span></a>`).join("")}</div>`).join("\n");
   const msg = wait ? `<p class="msg" role="status">${WAIT_MSG[wait]}</p>` : "";
 
   const body = `<div class="sections">
@@ -82,6 +99,7 @@ export function homePage(wait: WaitlistState) {
 <figure><img src="/screenshots/schedule.png" width="2880" height="1800" loading="lazy" alt="The owner’s week schedule, with a dozen appointments laid out by day and time"><figcaption>The schedule: month, week or day.</figcaption></figure>
 <figure><img src="/screenshots/dashboard.png" width="2880" height="1800" loading="lazy" alt="The owner’s dashboard: today’s appointments, this week’s totals and recent customers"><figcaption>The dashboard: today at a glance.</figcaption></figure>
 </div>
+${gallery}
 </section>
 
 <section id="features" aria-labelledby="h-features" class="wrap">

@@ -42,6 +42,12 @@ h1{margin:0;font-size:clamp(38px,6vw,56px);line-height:1.05;font-weight:800;lett
 .shots figure{margin:0;display:flex;flex-direction:column;gap:10px}
 .shots img{display:block;width:100%;height:auto;border-radius:16px;border:1px solid var(--line);box-shadow:0 20px 40px -24px rgba(15,23,42,.35)}
 .shots figcaption{font-size:15px;color:var(--muted)}
+.gal-title{margin:56px 0 16px;font-size:20px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:16px}
+.gallery.phones{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));max-width:880px}
+.gallery a{display:flex;flex-direction:column;gap:8px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}
+.gallery img{display:block;width:100%;height:auto;border-radius:12px;border:1px solid var(--line);box-shadow:0 12px 24px -16px rgba(15,23,42,.35);transition:transform .15s}
+.gallery a:hover img{transform:translateY(-2px)}
 main{display:block}
 .sheet{margin-top:-40px;background:var(--bg);border-radius:32px 32px 0 0;padding-top:72px;position:relative}
 .sections{display:flex;flex-direction:column;gap:96px}

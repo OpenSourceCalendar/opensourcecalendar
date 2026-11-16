@@ -26,9 +26,10 @@ describe("website pages", () => {
     expect(body).toContain('href="/terms"');
   });
 
-  it("shows real screenshots of the booking page, schedule and dashboard", async () => {
+  it("shows real screenshots, including the customer and owner gallery", async () => {
     const body = await (await app.request("/", {}, siteOn)).text();
-    for (const file of ["booking-phone.png", "schedule.png", "dashboard.png"]) {
+    const gallery = ["customer-service", "customer-details", "customer-confirmed", "customer-manage", "owner-services", "owner-customers", "owner-branding", "owner-share"];
+    for (const file of ["booking-phone.png", "schedule.png", "dashboard.png", ...gallery.map((g) => `${g}.png`)]) {
       expect(body).toMatch(new RegExp(`<img src="/screenshots/${file.replace(".", "\\.")}"[^>]* alt="[^"]+"`));
     }
   });

@@ -51,6 +51,25 @@ Don't want to host it yourself? Hosted plans are coming at **[opensourcecalendar
 - **Built for developers:** a REST API, API keys per app and signed webhooks, so it can power the booking feature in your own product.
 - **Bot protection** with Cloudflare Turnstile and limits that stop the booking form being used to spam people.
 
+## Screenshots
+
+**What your customers see** (on a phone): pick a service, add their details, get a confirmation, and change or cancel later.
+
+<p align="center">
+  <img src="public/screenshots/customer-service.png" width="190" alt="Choosing a service">
+  <img src="public/screenshots/customer-details.png" width="190" alt="Entering name and phone">
+  <img src="public/screenshots/customer-confirmed.png" width="190" alt="The booking confirmation">
+  <img src="public/screenshots/customer-manage.png" width="190" alt="The page to reschedule or cancel">
+</p>
+
+**What you see:** services, customers, branding with a live preview, and your link and embed code.
+
+| Services | Customers |
+| --- | --- |
+| <img src="public/screenshots/owner-services.png" alt="The services list"> | <img src="public/screenshots/owner-customers.png" alt="The customer list"> |
+| **Branding** | **Share & promote** |
+| <img src="public/screenshots/owner-branding.png" alt="Branding settings with a live preview"> | <img src="public/screenshots/owner-share.png" alt="Booking link and website embed code"> |
+
 ## Quick start
 
 You need a free [Cloudflare account](https://dash.cloudflare.com/sign-up) and [Node.js](https://nodejs.org/) 20 or newer.
