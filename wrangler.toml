@@ -1,0 +1,65 @@
+name = "open-source-calendar"
+main = "src/worker/index.ts"
+compatibility_date = "2026-05-21"
+# global_fetch_strictly_public: fetch() always goes out over the public internet, so a webhook address on
+# this account's own zone can't reach an origin directly (past its WAF or Access).
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+# Your worker answers at https://open-source-calendar.<your-account>.workers.dev.
+# To use your own domain as well (needed for Turnstile), add it here and set PUBLIC_URL below:
+# routes = [{ pattern = "book.example.com", custom_domain = true }]
+workers_dev = true
+
+[observability]
+enabled = true
+
+# Create it with `npx wrangler d1 create booking-calendar` and paste the id it prints.
+[[d1_databases]]
+binding = "DB"
+database_name = "booking-calendar"
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Booking emails, through Cloudflare Email Sending. Set the EMAIL_FROM secret to an address on a
+# domain onboarded for sending (`npx wrangler email sending list`); without it no email is sent.
+[[send_email]]
+name = "EMAIL"
+
+# Every minute: send due emails (retries and reminders), Google Calendar sync, webhooks.
+[triggers]
+crons = ["* * * * *"]
+
+# Logos and hero photos. Create once: `npx wrangler r2 bucket create booking-calendar-images`
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "booking-calendar-images"
+
+# Built React app. The worker runs first for the API and the front-page routes (site/); everything else is the SPA.
+[assets]
+directory = "./dist/client"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/health", "/", "/privacy", "/terms", "/robots.txt", "/sitemap.xml"]
+
+[vars]
+# Public Turnstile site key. Leave empty to turn the widget off. The matching secret is TURNSTILE_SECRET (wrangler secret put).
+# Turnstile needs a domain of your own on the account; workers.dev can't be used.
+TURNSTILE_SITE_KEY = ""
+# Base for links in emails and Google events, and the webhook own-host check. Set it once you use your own domain.
+# PUBLIC_URL = "https://book.example.com"
+
+# Secrets (set with `npx wrangler secret put NAME`, never committed):
+#   MANAGE_SECRET  required; signs customers' manage links. Changing it breaks every existing link
+#                  and changes every app's webhook signing secret (docs/webhooks.md)
+#   SESSION_SECRET required; signs owner sign-ins. Changing it signs everyone out
+#   OWNER_PASSWORD the password for the owner screens (/admin) on a standalone install
+#   SETUP_TOKEN    optional; one-time password for POST /api/setup/apps, to create API keys for your own app
+#   EMAIL_FROM     optional; address booking emails are sent from (needs the [[send_email]] binding).
+#                  When it's set, also turn on Turnstile (TURNSTILE_SITE_KEY + TURNSTILE_SECRET) so the
+#                  booking page can't be scripted to send email to strangers.
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET  optional; Google OAuth client for Google Calendar sync
+#                  (see docs/google-calendar-setup.md). Redirect URI: <PUBLIC_URL or worker URL>/api/google/callback
+#   GOOGLE_TOKEN_KEY  needed with the two above; 32 random bytes, base64 (`openssl rand -base64 32`).
+#                  Encrypts stored Google tokens; changing it disconnects every calendar.
+#   TURNSTILE_SECRET  optional; when set, bookings must pass Cloudflare Turnstile.
+#                     Set it together with TURNSTILE_SITE_KEY: a secret without a site key
+#                     hides the widget, so every booking would fail.

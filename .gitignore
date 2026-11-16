@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# opensourcecalendar.com's own deploy settings; the public template is wrangler.toml
+wrangler.production.toml
+
+# Maintainers' private notes and working files
+handoff.md
+CLAUDE.md
+private/
+
+# Google OAuth client downloads (contain the client secret)
+client_secret_*.json

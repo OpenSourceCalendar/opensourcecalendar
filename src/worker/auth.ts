@@ -1,0 +1,109 @@
+import { Hono, type Context } from "hono";
+import { createMiddleware } from "hono/factory";
+import { newId, randomToken, sha256Hex } from "./lib/ids";
+import { signSession, verifySession } from "./lib/session";
+import type { AppEnv, AppRow, CalendarRow } from "./types";
+
+const encoder = new TextEncoder();
+
+async function sameSecret(a: string, b: string): Promise<boolean> {
+  const [ha, hb] = await Promise.all([sha256Hex(a), sha256Hex(b)]);
+  return crypto.subtle.timingSafeEqual(encoder.encode(ha), encoder.encode(hb));
+}
+
+export const setup = new Hono<AppEnv>();
+
+setup.post("/apps", async (c) => {
+  const token = c.env.SETUP_TOKEN;
+  if (!token) return c.notFound();
+  const given = (c.req.header("Authorization") ?? "").replace(/^Bearer /, "");
+  if (!(await sameSecret(given, token))) return c.json({ error: "unauthorized" }, 401);
+
+  const body = (await c.req.json().catch(() => null)) as { name?: unknown } | null;
+  const name = typeof body?.name === "string" ? body.name.trim() : "";
+  if (!name || name.length > 100) return c.json({ error: "invalid_input" }, 400);
+
+  const apiKey = `bc_${randomToken()}`;
+  const id = newId("app");
+  await c.env.DB.prepare("INSERT INTO apps (id, name, api_key_hash, created_at) VALUES (?, ?, ?, ?)")
+    .bind(id, name, await sha256Hex(apiKey), Date.now())
+    .run();
+  return c.json({ app_id: id, api_key: apiKey }, 201);
+});
+
+/** Checks the app API key and reads X-Calendar-User. */
+export const requireApp = createMiddleware<AppEnv>(async (c, next) => {
+  const header = c.req.header("Authorization") ?? "";
+  const key = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!key) return c.json({ error: "unauthorized" }, 401);
+  const app = await c.env.DB.prepare("SELECT id, name FROM apps WHERE api_key_hash = ?")
+    .bind(await sha256Hex(key))
+    .first<AppRow>();
+  if (!app) return c.json({ error: "unauthorized" }, 401);
+
+  const user = c.req.header("X-Calendar-User") ?? "";
+  if (!user || user.length > 200) return c.json({ error: "invalid_input", message: "X-Calendar-User header required" }, 400);
+
+  c.set("app", app);
+  c.set("userId", user);
+  await next();
+});
+
+/** Loads the calendar owned by (app, user). Never trusts a calendar id from the request. */
+export const requireCalendar = createMiddleware<AppEnv>(async (c, next) => {
+  const row = await c.env.DB.prepare("SELECT * FROM calendars WHERE app_id = ? AND external_user_id = ?")
+    .bind(c.var.app.id, c.var.userId)
+    .first<CalendarRow>();
+  if (!row) return c.json({ error: "calendar_not_found" }, 404);
+  c.set("calendar", row);
+  await next();
+});
+
+export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const STANDALONE_APP = "app_standalone";
+const STANDALONE_USER = "owner";
+
+function requireSessionSecret(secret: string | undefined): string {
+  if (!secret) throw new Error("SESSION_SECRET is not set");
+  return secret;
+}
+
+/** Owner screens: `Authorization: Session <token>`. Sets the same vars as requireApp. */
+export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
+  const header = c.req.header("Authorization") ?? "";
+  const token = header.startsWith("Session ") ? header.slice(8) : "";
+  const s = token ? await verifySession(requireSessionSecret(c.env.SESSION_SECRET), token, Date.now()) : null;
+  if (!s) return c.json({ error: "unauthorized" }, 401);
+  const app = await c.env.DB.prepare("SELECT id, name FROM apps WHERE id = ?").bind(s.a).first<AppRow>();
+  if (!app) return c.json({ error: "unauthorized" }, 401);
+  c.set("app", app);
+  c.set("userId", s.u);
+  await next();
+});
+
+/** Host app → owner screens link. Mounted inside /api/v1 (API key auth). */
+export async function createAdminSession(c: Context<AppEnv>) {
+  const now = Date.now();
+  const token = await signSession(requireSessionSecret(c.env.SESSION_SECRET), { a: c.var.app.id, u: c.var.userId }, now, SESSION_TTL_MS);
+  return c.json({ token, expires_at: new Date(now + SESSION_TTL_MS).toISOString(), url: `/admin#session=${token}` }, 201);
+}
+
+/** Standalone installs: password login. 404 unless OWNER_PASSWORD is set. */
+export const adminLogin = new Hono<AppEnv>();
+adminLogin.post("/login", async (c) => {
+  const password = c.env.OWNER_PASSWORD;
+  if (!password) return c.notFound();
+  const body = (await c.req.json().catch(() => null)) as { password?: unknown } | null;
+  const given = typeof body?.password === "string" ? body.password : "";
+  if (!(await sameSecret(given, password))) {
+    await new Promise((r) => setTimeout(r, 500)); // slow down guessing
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  // The built-in app row for standalone installs; its key hash can never match a real key.
+  await c.env.DB.prepare("INSERT OR IGNORE INTO apps (id, name, api_key_hash, created_at) VALUES (?, 'Standalone', ?, ?)")
+    .bind(STANDALONE_APP, `none:${STANDALONE_APP}`, Date.now())
+    .run();
+  const now = Date.now();
+  const token = await signSession(requireSessionSecret(c.env.SESSION_SECRET), { a: STANDALONE_APP, u: STANDALONE_USER }, now, SESSION_TTL_MS);
+  return c.json({ token, expires_at: new Date(now + SESSION_TTL_MS).toISOString() });
+});

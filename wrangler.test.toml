@@ -1,0 +1,31 @@
+# Test-only copy of wrangler.toml without [assets]. Keep bindings in sync.
+name = "booking-calendar"
+main = "src/worker/index.ts"
+compatibility_date = "2026-05-21"
+# global_fetch_strictly_public: fetch() always goes out over the public internet, so a webhook address on
+# this account's own zone can't reach an origin directly (past its WAF or Access).
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+[observability]
+enabled = true
+
+# Local only until Phase 8 creates the real database and replaces database_id.
+[[d1_databases]]
+binding = "DB"
+database_name = "booking-calendar"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Logos and hero photos. Create once: `npx wrangler r2 bucket create booking-calendar-images`
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "booking-calendar-images"
+
+[vars]
+# Public Turnstile site key. Leave empty to turn the widget off. The matching secret is TURNSTILE_SECRET (wrangler secret put).
+TURNSTILE_SITE_KEY = ""
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   SETUP_TOKEN    one-time password for POST /api/setup/apps
+#   MANAGE_SECRET  signs customers' manage links; changing it breaks every existing link
+#   TURNSTILE_SECRET  optional; when set, bookings must pass Cloudflare Turnstile
