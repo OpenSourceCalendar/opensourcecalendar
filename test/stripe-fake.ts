@@ -38,7 +38,7 @@ export class FakeStripe {
   private n = 0;
 
   addSub(s: Partial<FakeSub> & { customer: string; price: string; status: string }): FakeSub {
-    const id = s.id ?? `sub_${++this.n}`;
+    const id = s.id ?? `sub_${uniq()}_${++this.n}`; // unique across tests: they share one D1, and billing.stripe_subscription_id is UNIQUE
     const sub: FakeSub = {
       id, customer: s.customer, status: s.status, cancel_at_period_end: s.cancel_at_period_end ?? false,
       trial_end: s.trial_end ?? null, created: s.created ?? Math.floor(Date.now() / 1000) + this.n,
