@@ -1381,6 +1381,9 @@ textarea.input {
 [data-style="midnight"] .btn-danger {
   color: #0d0f13; /* white on the light red fails contrast */
 }
+[data-style="midnight"] .powered {
+  color: var(--muted); /* the light styles' faint grey is too dim on black */
+}
 [data-style="midnight"] .action-bar-inner::before {
   background: color-mix(in oklab, var(--sunken) 94%, transparent);
   box-shadow: 0 0 0 1px var(--line-strong);
