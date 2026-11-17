@@ -5,6 +5,7 @@ import { buildIcs } from "../booking/ics";
 import { locationText } from "../lib/location";
 import { parseBranding, parseNotifications, parseRules } from "../settings";
 import type { Bindings, CalendarRow } from "../types";
+import { buildAccountEmail } from "../billing/emails";
 import { calendarOverDailyCap } from "./limits";
 import type { EmailKind, EmailPayload, OutgoingEmail, Sender } from "./outbox";
 import { customerEmail, oneLine, ownerEmail, type CustomerKind, type EmailFacts, type OwnerKind } from "./templates";
@@ -24,7 +25,7 @@ export const sendWith = (env: Bindings): Sender => async (message) => {
   await env.EMAIL.send(message);
 };
 
-const SETTING: Record<EmailKind, "customer_confirmation" | "customer_change" | "customer_cancel" | "reminder" | "owner_new" | "owner_change" | "owner_cancel"> = {
+const SETTING: Partial<Record<EmailKind, "customer_confirmation" | "customer_change" | "customer_cancel" | "reminder" | "owner_new" | "owner_change" | "owner_cancel">> = {
   "email.customer.booked": "customer_confirmation",
   "email.customer.changed": "customer_change",
   "email.customer.cancelled": "customer_cancel",
@@ -54,12 +55,18 @@ export type Built = { message: OutgoingEmail } | { skip: string } | { wait: stri
 export async function buildEmail(env: Bindings, calendarId: string, kind: EmailKind, payload: EmailPayload, now: number): Promise<Built> {
   const from = emailFrom(env);
   if (!from) return { skip: "not_configured" };
-  if (!(kind in SETTING)) return { skip: "unknown_kind" };
   const db = env.DB;
+  if (kind.startsWith("email.account.")) {
+    // Account emails count toward the calendar's daily cap like every other email.
+    if (await calendarOverDailyCap(db, calendarId, now)) return { wait: "daily_cap" };
+    const tz = (await db.prepare("SELECT time_zone FROM calendars WHERE id = ?").bind(calendarId).first<{ time_zone: string }>())?.time_zone ?? "UTC";
+    return buildAccountEmail(env, from, kind, payload, tz);
+  }
+  if (!(kind in SETTING)) return { skip: "unknown_kind" };
   const cal = await db.prepare("SELECT * FROM calendars WHERE id = ?").bind(calendarId).first<CalendarRow>();
   if (!cal) return { skip: "no_calendar" };
   const notifications = parseNotifications(cal.notifications);
-  if (!notifications[SETTING[kind]]) return { skip: "turned_off" };
+  if (!notifications[SETTING[kind]!]) return { skip: "turned_off" };
   const appt = await getAppointmentFull(db, cal.id, payload.appointment_id);
   if (!appt) return { skip: "no_appointment" };
 

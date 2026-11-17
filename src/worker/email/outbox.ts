@@ -12,7 +12,8 @@ import { webhookJob } from "../webhooks/job";
 
 export type EmailKind =
   | "email.customer.booked" | "email.customer.changed" | "email.customer.cancelled" | "email.customer.reminder"
-  | "email.owner.new" | "email.owner.changed" | "email.owner.cancelled";
+  | "email.owner.new" | "email.owner.changed" | "email.owner.cancelled"
+  | "email.account.limit" | "email.account.grace_start" | "email.account.grace_end";
 
 export interface EmailPayload {
   appointment_id: string;
@@ -24,6 +25,12 @@ export interface EmailPayload {
   due?: number;
   /** Confirmations from the booking page: the hashed inbox, for the per-address limit. */
   addr?: string;
+  /** Account emails: the account (users.id). */
+  user_id?: string;
+  /** Account limit email: 'YYYY-MM'. */
+  month?: string;
+  /** Grace emails: when the grace month ends (ms). */
+  until?: number;
 }
 
 export interface OutgoingEmail {
