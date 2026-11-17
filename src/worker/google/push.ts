@@ -1,6 +1,7 @@
 // Booking → Google. Each booking change queues a `google.push` job (in the same batch as its emails);
 // runGoogleJobs makes the Google event match the appointment as it is when the job runs.
 import { getAppointmentFull, type AppointmentFull } from "../booking/book";
+import { entitlementsFor } from "../billing/entitlements";
 import { newId, sha256Hex } from "../lib/ids";
 import type { Bindings, CalendarRow } from "../types";
 import { OWN_APPT, OWN_CAL, RUN_BUDGET_MS } from "./busy";
@@ -149,6 +150,12 @@ export async function runGoogleJobs(env: Bindings, now: number): Promise<number>
       .bind(attempt, retryAt, job.id, job.run_at).run();
     if (!claim.meta.changes) continue;
     handled++;
+
+    // Free plan: nothing goes to Google. Close the job so it doesn't retry.
+    if (!(await entitlementsFor(env, job.calendar_id, now)).google) {
+      await db.prepare("UPDATE jobs SET done_at = ?, result = 'skipped:plan' WHERE id = ?").bind(now, job.id).run();
+      continue;
+    }
 
     let result: string | null;
     let payload: PushPayload | null = null;

@@ -1,5 +1,6 @@
 // Google → booking page. Busy Google events are copied into google_busy, which the slot finder and the
 // no-double-booking check already respect. Event details are never stored: only an id and a time range.
+import { entitlements } from "../billing/entitlements";
 import { sha256Hex } from "../lib/ids";
 import { parseRules } from "../settings";
 import { localToUtc } from "../slots/tz";
@@ -90,6 +91,7 @@ const CHECK_DEADLINE_MS = 2_500;
 export async function checkGoogleWindow(env: Bindings, cal: CalendarRow, start: number, end: number, now: number): Promise<void> {
   const cfg = googleConfig(env);
   if (!cfg) return;
+  if (!(await entitlements(env, cal, now)).google) return;
   const work = (async () => {
     const conn = await getConnection(env.DB, cal.id);
     if (!conn || conn.status !== "active") return;
@@ -132,7 +134,8 @@ export async function runGoogleSync(env: Bindings, now: number): Promise<number>
     tried++;
     await db.prepare("UPDATE google_connections SET last_attempt_at = ? WHERE calendar_id = ?").bind(now, conn.calendar_id).run();
     const cal = await db.prepare("SELECT * FROM calendars WHERE id = ?").bind(conn.calendar_id).first<CalendarRow>();
-    if (!cal) continue;
+    // Free plan: sync is paused (not an error), so the connection is kept and picks up again once paid.
+    if (!cal || !(await entitlements(env, cal, now)).google) continue;
     try {
       await syncBusy(env, cfg, conn, cal, now);
     } catch (err) {

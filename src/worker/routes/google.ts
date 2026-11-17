@@ -3,6 +3,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { requireCalendar } from "../auth";
+import { entitlements } from "../billing/entitlements";
 import { originOf } from "../email/queue";
 import { randomToken, sha256Hex } from "../lib/ids";
 import { parseBody } from "../lib/http";
@@ -78,6 +79,7 @@ google.get("/busy", async (c) => {
 });
 
 google.post("/connect", async (c) => {
+  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
   const cfg = googleConfig(c.env);
   if (!cfg) return c.json({ error: "not_configured" }, 503);
   const db = c.env.DB;
@@ -119,6 +121,7 @@ google.get("/calendars", async (c) => {
 });
 
 google.put("/calendar", async (c) => {
+  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
   const body = await parseBody(c, z.object({ id: z.string().min(1).max(1024) }));
   if (!body.ok) return body.response;
   const ctx = await active(c);
@@ -150,6 +153,7 @@ google.put("/calendar", async (c) => {
 });
 
 google.post("/sync", async (c) => {
+  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
   const cfg = googleConfig(c.env);
   if (!cfg) return c.json({ error: "not_configured" }, 503);
   await syncNow(c.env, cfg, c.var.calendar.id);
