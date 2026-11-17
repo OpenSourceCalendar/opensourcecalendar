@@ -5,7 +5,7 @@ import { PoweredBy } from "../components/PoweredBy";
 import { ServiceList } from "../components/ServiceList";
 import { brandVars, type PageStyle } from "../theme";
 import type { PageProps } from "./AdminApp";
-import { adminApi, adminErrorText } from "./api";
+import { adminApi, adminErrorText, onFree, type BillingInfo } from "./api";
 import { SaveBar } from "./SaveBar";
 import { trimTransparent } from "./trim";
 
@@ -30,8 +30,10 @@ const LIMITS = { logo: 2, hero: 5 }; // MB
 
 type Kind = "logo" | "hero";
 
-export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) {
+export function Branding({ calendar, notify, setDirty, onCalendar, billing }: PageProps & { billing: BillingInfo | null }) {
   const b = calendar.branding;
+  // On Free the footer always shows (the server adds it), so the box shows that without changing the saved setting.
+  const forcedFooter = onFree(billing);
   const savedForm = { business_name: b.business_name, phone: b.phone, tagline: b.tagline, color: b.color, style: b.style, powered_by: calendar.rules.powered_by };
   const [form, setForm] = useState(savedForm);
   const [hexText, setHexText] = useState(b.color);
@@ -200,9 +202,10 @@ export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) 
 
           <section className="card">
             <label className="check-row">
-              <input type="checkbox" checked={form.powered_by} onChange={(e) => set("powered_by", e.target.checked)} />
+              <input type="checkbox" checked={forcedFooter || form.powered_by} disabled={forcedFooter} onChange={(e) => set("powered_by", e.target.checked)} />
               Show "Powered by Open Source Calendar" at the bottom
             </label>
+            {forcedFooter && <p className="hint">Pro removes the footer.</p>}
           </section>
           <p className="muted small">Save to update your live booking page.</p>
         </div>
@@ -217,7 +220,7 @@ export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) 
             <div className="content">
               {services.length ? <ServiceList services={services.slice(0, 3)} selectedId={null} onSelect={() => {}} /> : <p className="muted">Your services will show here.</p>}
             </div>
-            <PoweredBy show={form.powered_by} />
+            <PoweredBy show={forcedFooter || form.powered_by} />
           </div>
         </aside>
       </div>

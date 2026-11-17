@@ -2193,3 +2193,47 @@ a.status-link.is-warn {
   flex-direction: column;
   gap: 2px;
 }
+
+/* ---------- Plan and billing banners ---------- */
+
+.plan-cards {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.plan-cards .btn {
+  margin-top: auto;
+}
+.plan-price {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.plan-now {
+  max-width: 44rem;
+}
+.plan-now p {
+  margin: 0;
+}
+/* A strip across the top of every screen, above the page's brand band. */
+.banner {
+  padding: 12px 40px;
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--warn) 30%, transparent);
+}
+.banner-danger {
+  background: var(--danger-wash);
+  color: var(--danger);
+  border-bottom-color: color-mix(in oklab, var(--danger) 25%, var(--surface));
+}
+.banner .link {
+  color: inherit;
+}
+@media (max-width: 859px) {
+  .banner {
+    padding: 10px 16px;
+  }
+}

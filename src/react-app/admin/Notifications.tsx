@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { addDays, dateInZone, dateLabel } from "../time";
 import type { PageProps } from "./AdminApp";
-import { adminApi, adminErrorText, type Notifications as Settings } from "./api";
+import { adminApi, adminErrorText, onFree, type BillingInfo, type Notifications as Settings } from "./api";
 import { SaveBar } from "./SaveBar";
 import { Setting, Switch } from "./Switch";
 
@@ -10,7 +10,7 @@ const MAX_MESSAGE = 160;
 const FILL_INS = ["Business Name", "Date", "Time", "Service"] as const;
 const HOURS: number[] = [1, 2, 3, 6, 12, 24, 48];
 
-export function Notifications({ calendar, notify, setDirty, onCalendar }: PageProps) {
+export function Notifications({ calendar, notify, setDirty, onCalendar, billing }: PageProps & { billing: BillingInfo | null }) {
   const saved = calendar.notifications;
   const [form, setForm] = useState<Settings>(saved);
   const [saving, setSaving] = useState(false);
@@ -195,6 +195,7 @@ export function Notifications({ calendar, notify, setDirty, onCalendar }: PagePr
         <Setting title="Send a reminder" help="An email to the customer before their appointment.">
           <Switch checked={form.reminder} label="Send a reminder" onChange={(on) => set("reminder", on)} />
         </Setting>
+        {onFree(billing) && <p className="hint">Reminders are included in Pro.</p>}
         {form.reminder && (
           <fieldset className="fieldset nt-timing">
             <legend className="label">When</legend>

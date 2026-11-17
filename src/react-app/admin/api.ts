@@ -272,6 +272,12 @@ export function adminErrorText(e: unknown): string {
       return "Couldn't reach Google. Try again in a minute.";
     case "not_connected":
       return "Google Calendar isn't connected anymore. Reload the page.";
+    case "already_subscribed":
+      return "You already have a plan. Use Manage billing to change it.";
+    case "too_many_attempts":
+      return "Too many tries. Please wait an hour and try again.";
+    case "stripe_unavailable":
+      return "Couldn't reach the payment service. Try again in a minute.";
     case "network":
       return "We couldn't reach the server. Check your connection and try again.";
     case "unauthorized":
@@ -348,7 +354,33 @@ export const adminApi = {
   setGoogleCalendar: (id: string) => request<GoogleStatus>("/google/calendar", { method: "PUT", json: { id } }),
   syncGoogle: () => request<GoogleStatus>("/google/sync", { method: "POST" }),
   disconnectGoogle: () => request<void>("/google", { method: "DELETE" }),
+  billing: () => request<BillingInfo>("/billing"),
+  checkout: (plan: "pro" | "white_label", interval: "month" | "year") =>
+    request<{ url: string }>("/billing/checkout", { method: "POST", json: { plan, interval } }),
+  billingPortal: () => request<{ url: string }>("/billing/portal", { method: "POST" }),
 };
+
+/** The account's plan, as GET /billing reports it. `enabled: false` when billing is off (self-hosted, or not a hosted account). */
+export type BillingInfo =
+  | { enabled: false }
+  | {
+      enabled: true;
+      plan: "free" | "pro" | "white_label";
+      status: string;
+      interval: "month" | "year" | null;
+      paid: boolean;
+      trial_available: boolean;
+      trial_end: string | null;
+      current_period_end: string | null;
+      cancel_at_period_end: boolean;
+      grace_until: string | null;
+      has_customer: boolean;
+      bookings_this_month: number;
+      monthly_limit: number | null;
+    };
+
+/** True when billing is on and the account is on Free, so paid features show a note instead. */
+export const onFree = (b: BillingInfo | null): boolean => b?.enabled === true && !b.paid;
 
 /** The Google Calendar connection, as the server reports it. Never holds tokens. */
 export interface GoogleStatus {

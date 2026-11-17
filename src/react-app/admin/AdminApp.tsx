@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { applyBrand } from "../theme";
-import { adminApi, setUnauthorizedHandler, type AdminCalendar, type Customer, type GoogleStatus } from "./api";
+import { adminApi, setUnauthorizedHandler, type AdminCalendar, type BillingInfo, type Customer, type GoogleStatus } from "./api";
 import { Availability } from "./Availability";
 import { Branding } from "./Branding";
 import { CustomerPage } from "./CustomerPage";
@@ -11,6 +11,7 @@ import { Dialog } from "./Dialog";
 import { NewEntry, type EntryStart } from "./NewEntry";
 import { Schedule } from "./Schedule";
 import { Notifications } from "./Notifications";
+import { Plan } from "./Plan";
 import { Services } from "./Services";
 import { captureSessionFromUrl, clearToken, getToken, lastCalendarId, setLastCalendarId } from "./session";
 import { Setup } from "./Setup";
@@ -166,6 +167,19 @@ export function AdminApp() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [calendarId, loadGoogle]);
+  // The account's plan, for the Plan page, the banners and the Free notes. Loaded with each calendar; a failure
+  // counts as billing off, so the screens look as they do without billing.
+  const [billing, setBilling] = useState<BillingInfo | null>(null);
+  const loadBilling = useCallback(() => {
+    const asked = googleFor.current;
+    const take = (b: BillingInfo) => asked === googleFor.current && setBilling(b);
+    adminApi.billing().then(take, () => take({ enabled: false }));
+  }, []);
+  useEffect(() => {
+    setBilling(null);
+    if (calendarId) loadBilling();
+  }, [calendarId, loadBilling]);
+
   const onGooglePage = path === "/admin/google";
   const wasOnGooglePage = useRef(false);
   useEffect(() => {
@@ -237,7 +251,7 @@ export function AdminApp() {
   const known = NAV.find((n) => n.path === path);
 
   return (
-    <Shell calendar={state.calendar} google={google} path={path} navigate={navigate} onNewEntry={() => setEntry({})} onSignOut={signOut}>
+    <Shell calendar={state.calendar} google={google} billing={billing} path={path} navigate={navigate} onNewEntry={() => setEntry({})} onSignOut={signOut}>
       {path === "/admin" ? (
         <Dashboard calendar={state.calendar} reloadKey={saves} navigate={navigate} onNewEntry={() => setEntry({})} />
       ) : path === "/admin/schedule" ? (
@@ -251,14 +265,16 @@ export function AdminApp() {
       ) : customerId ? (
         <CustomerPage key={customerId} {...page} id={customerId} reloadKey={saves} onBook={(customer) => setEntry({ customer })} />
       ) : path === "/admin/notifications" ? (
-        <Notifications {...page} />
+        <Notifications {...page} billing={billing} />
       ) : path === "/admin/branding" ? (
-        <Branding {...page} />
+        <Branding {...page} billing={billing} />
       ) : path === "/admin/share" ? (
         <Share {...page} />
       ) : path === "/admin/google" ? (
-        <Google {...page} google={google} onGoogle={setGoogle} />
-      ) : known ? (
+        <Google {...page} google={google} onGoogle={setGoogle} billing={billing} />
+      ) : path === "/admin/plan" && billing?.enabled ? (
+        <Plan billing={billing} reload={loadBilling} />
+      ) : path === "/admin/plan" && !billing ? null : known ? (
         <ComingSoon title={known.label} />
       ) : (
         <>

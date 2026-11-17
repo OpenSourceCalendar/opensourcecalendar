@@ -13,6 +13,7 @@ const PATHS = {
   plus: "M10 4v12M4 10h12",
   close: "M5 5l10 10M15 5L5 15",
   copy: "M8 7h8v9H8zM5 13V4h8",
+  card: "M3 5h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM2 9h16M5 12h3",
   bell: "M5 14V9a5 5 0 0 1 10 0v5l1.5 2h-13L5 14zM8.5 18a1.5 1.5 0 0 0 3 0",
 } as const;
 

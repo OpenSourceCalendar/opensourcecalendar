@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PageProps } from "./AdminApp";
-import { adminApi, adminErrorText, type GoogleCalendarChoice, type GoogleStatus } from "./api";
+import { adminApi, adminErrorText, onFree, type BillingInfo, type GoogleCalendarChoice, type GoogleStatus } from "./api";
 import { Dialog } from "./Dialog";
 import { Setting, Switch } from "./Switch";
 
@@ -25,7 +25,15 @@ function ago(iso: string | null, now: number): string {
   return h === 1 ? "1 hour ago" : `${h} hours ago`;
 }
 
-export function Google({ calendar, notify, onCalendar, google, onGoogle }: PageProps & { google: GoogleStatus | null; onGoogle: (g: GoogleStatus) => void }) {
+export function Google({
+  calendar,
+  notify,
+  onCalendar,
+  navigate,
+  google,
+  onGoogle,
+  billing,
+}: PageProps & { google: GoogleStatus | null; onGoogle: (g: GoogleStatus) => void; billing: BillingInfo | null }) {
   const [waiting, setWaiting] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "connect" | "sync" | "allday" | "calendar" | "disconnect">("");
@@ -110,6 +118,14 @@ export function Google({ calendar, notify, onCalendar, google, onGoogle }: PageP
       if (active) onGoogle(await adminApi.syncGoogle());
     }, () => notify({ text: "Saved" }));
 
+  // On Free, sync is paused and connecting is refused, so the connect buttons become a way to the Plan page.
+  const free = onFree(billing);
+  const toPlan = (
+    <button type="button" className="btn btn-primary btn-auto" onClick={() => navigate("/admin/plan")}>
+      See plans
+    </button>
+  );
+
   const header = (
     <header className="admin-band">
       <h1 className="admin-title">Google Calendar</h1>
@@ -189,7 +205,12 @@ export function Google({ calendar, notify, onCalendar, google, onGoogle }: PageP
             <li>Your own events block those times on your booking page.</li>
             <li>Works with Google Calendar on iPhone, Android and desktop.</li>
           </ul>
-          {waitingNote || (
+          {free ? (
+            <>
+              <p>Google Calendar sync is included in Pro.</p>
+              {toPlan}
+            </>
+          ) : waitingNote || (
             <button type="button" className="btn btn-primary gc-cta" disabled={busy === "connect"} onClick={connect}>
               {busy === "connect" ? "Opening Google…" : "Connect Google Calendar"}
             </button>
@@ -213,11 +234,16 @@ export function Google({ calendar, notify, onCalendar, google, onGoogle }: PageP
           </h2>
           <p>{PROBLEMS[google.problem ?? ""] ?? "Something went wrong with the connection."}</p>
           <p className="muted small">Until you reconnect, new bookings aren't added to Google. Times you were busy before still stay blocked.</p>
+          {free && <p>Paused on Free. Upgrade to turn it back on.</p>}
           {waitingNote || (
             <div className="gc-actions">
-              <button type="button" className="btn btn-primary" disabled={busy === "connect"} onClick={connect}>
-                {busy === "connect" ? "Opening Google…" : "Reconnect"}
-              </button>
+              {free ? (
+                toPlan
+              ) : (
+                <button type="button" className="btn btn-primary" disabled={busy === "connect"} onClick={connect}>
+                  {busy === "connect" ? "Opening Google…" : "Reconnect"}
+                </button>
+              )}
               <button type="button" className="link muted" onClick={() => setDisconnecting(true)}>
                 Disconnect
               </button>
@@ -241,6 +267,14 @@ export function Google({ calendar, notify, onCalendar, google, onGoogle }: PageP
           <span className="status-dot is-ok" aria-hidden="true" />
           Connected to <strong>{google.email || "your Google account"}</strong>
         </p>
+        {free && (
+          <>
+            <p className="gc-warning" role="status">
+              Paused on Free. Upgrade to turn it back on.
+            </p>
+            {toPlan}
+          </>
+        )}
         {google.warning && (
           <p className="gc-warning" role="status">
             {google.warning === "push_failed"

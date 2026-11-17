@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import type { AdminCalendar, GoogleStatus } from "./api";
+import type { AdminCalendar, BillingInfo, GoogleStatus } from "./api";
+import { Banners } from "./Banners";
 import { Icon, type IconName } from "./Icon";
 import { canSignOut } from "./session";
 
@@ -14,11 +15,14 @@ export const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: "/admin/branding", label: "Branding", icon: "branding" },
   { path: "/admin/share", label: "Share & Promote", icon: "share" },
 ];
+/** Only shown when billing is on (hosted accounts). */
+export const PLAN_NAV: (typeof NAV)[number] = { path: "/admin/plan", label: "Plan", icon: "card" };
 
 /** Left menu on wide screens; a top bar with a slide-over menu on phones. */
 export function Shell({
   calendar,
   google,
+  billing,
   path,
   navigate,
   onNewEntry,
@@ -28,6 +32,8 @@ export function Shell({
   calendar: AdminCalendar;
   /** Null while loading. */
   google: GoogleStatus | null;
+  /** Null while loading. */
+  billing: BillingInfo | null;
   path: string;
   navigate: (path: string) => void;
   onNewEntry: () => void;
@@ -38,8 +44,9 @@ export function Shell({
   const menuButton = useRef<HTMLButtonElement>(null);
   const side = useRef<HTMLElement>(null);
   const name = calendar.branding.business_name || "Your calendar";
+  const nav = billing?.enabled ? [...NAV, PLAN_NAV] : NAV;
   // A page under a menu item (a customer's page) keeps that item lit. The dashboard only matches itself.
-  const current = NAV.find((n) => n.path === path || (n.path !== "/admin" && path.startsWith(`${n.path}/`)));
+  const current = nav.find((n) => n.path === path || (n.path !== "/admin" && path.startsWith(`${n.path}/`)));
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -98,7 +105,7 @@ export function Shell({
         </div>
 
         <nav className="admin-nav" aria-label="Calendar">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <a
               key={item.path}
               href={item.path}
@@ -148,6 +155,7 @@ export function Shell({
       </aside>
 
       <main className="admin-main">
+        <Banners billing={billing} navigate={navigate} />
         <div className="admin-main-inner">{children}</div>
       </main>
     </div>
