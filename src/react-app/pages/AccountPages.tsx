@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { accountApi, ApiError, type AccountConfig } from "../api";
-import { setToken as saveSession } from "../admin/session";
+import { getToken, setToken as saveSession } from "../admin/session";
 import { Turnstile } from "../components/Turnstile";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -156,7 +156,7 @@ export function LoginPage() {
 export function VerifyPage() {
   const cfg = useAccountConfig();
   const [token] = useState(() => /(?:^#|&)t=([^&]+)/.exec(window.location.hash)?.[1] ?? "");
-  const [state, setState] = useState<"ready" | "busy" | "error">(token ? "ready" : "error");
+  const [state, setState] = useState<"ready" | "busy" | "error" | "already">(token ? "ready" : "error");
   const [error, setError] = useState(token ? "" : "This sign-in link is incomplete. Ask for a new one.");
 
   async function go() {
@@ -167,6 +167,8 @@ export function VerifyPage() {
       window.location.replace("/admin");
     } catch (err) {
       const code = err instanceof ApiError ? err.error : "";
+      // Reopening a used link while still logged in here isn't a problem: offer the calendar instead.
+      if (code === "link_expired" && getToken()) return setState("already");
       setError(code === "invite_used" ? "That invite has already been used." : code === "link_expired" ? "This link has expired or was already used. Ask for a new one." : "We couldn't log you in. Check your connection and try again.");
       setState("error");
     }
@@ -177,7 +179,12 @@ export function VerifyPage() {
   return (
     <Card>
       <h1 className="title">Log in to Open Source Calendar</h1>
-      {state === "error" ? (
+      {state === "already" ? (
+        <>
+          <p className="lede">You're already logged in. This link has been used, so you don't need it again.</p>
+          <a className="btn btn-primary" href="/admin">Go to your calendar</a>
+        </>
+      ) : state === "error" ? (
         <>
           <p className="field-error" role="alert">{error}</p>
           <a className="btn btn-secondary" href="/login">Back to log in</a>
