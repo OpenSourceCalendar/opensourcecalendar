@@ -3,7 +3,7 @@ import type { Service } from "../api";
 import { Header } from "../components/Header";
 import { PoweredBy } from "../components/PoweredBy";
 import { ServiceList } from "../components/ServiceList";
-import { brandVars } from "../theme";
+import { brandVars, type PageStyle } from "../theme";
 import type { PageProps } from "./AdminApp";
 import { adminApi, adminErrorText } from "./api";
 import { SaveBar } from "./SaveBar";
@@ -17,6 +17,13 @@ const PRESETS: [string, string][] = [
   ["#c2410c", "Orange"],
   ["#334155", "Slate"],
 ];
+const STYLES: [PageStyle, string, string][] = [
+  ["classic", "Classic", "Color band on top, rounded"],
+  ["clean", "Clean", "White and minimal"],
+  ["soft", "Soft", "Tinted and extra round"],
+  ["bold", "Bold", "Full color, strong outlines"],
+  ["midnight", "Midnight", "Dark"],
+];
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const LIMITS = { logo: 2, hero: 5 }; // MB
@@ -25,7 +32,7 @@ type Kind = "logo" | "hero";
 
 export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) {
   const b = calendar.branding;
-  const savedForm = { business_name: b.business_name, phone: b.phone, tagline: b.tagline, color: b.color, powered_by: calendar.rules.powered_by };
+  const savedForm = { business_name: b.business_name, phone: b.phone, tagline: b.tagline, color: b.color, style: b.style, powered_by: calendar.rules.powered_by };
   const [form, setForm] = useState(savedForm);
   const [hexText, setHexText] = useState(b.color);
   const [saving, setSaving] = useState(false);
@@ -128,6 +135,22 @@ export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) 
           </section>
 
           <section className="card">
+            <h2 className="card-title">Page style</h2>
+            <div className="style-choices" role="radiogroup" aria-label="Page style">
+              {STYLES.map(([id, name, hint]) => (
+                <label key={id} className="style-choice">
+                  <input type="radio" name="page-style" checked={form.style === id} onChange={() => set("style", id)} />
+                  <span>
+                    <strong>{name}</strong>
+                    <span className="muted small">{hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="hint">Changes your booking page and your customers' change or cancel page. Any color works with any style.</p>
+          </section>
+
+          <section className="card">
             <h2 className="card-title">Brand color</h2>
             <div className="swatches" role="group" aria-label="Brand color">
               {PRESETS.map(([hex, name]) => (
@@ -187,7 +210,7 @@ export function Branding({ calendar, notify, setDirty, onCalendar }: PageProps) 
         <aside className="brand-preview" aria-label="Preview">
           <p className="panel-label">Preview</p>
           {/* Its own brand variables, so the unsaved color shows here without recoloring the admin. */}
-          <div className="phone" style={brandVars(form.color) as CSSProperties} aria-hidden="true" {...{ inert: "" }}>
+          <div className="phone" data-style={form.style} style={brandVars(form.color, form.style) as CSSProperties} aria-hidden="true" {...{ inert: "" }}>
             <Header branding={preview}>
               <h2 className="title">Choose a service</h2>
             </Header>
