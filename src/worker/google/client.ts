@@ -42,6 +42,12 @@ export function authUrl(cfg: GoogleConfig, redirect: string, state: string, logi
   return `${AUTH_URL}?${p}`;
 }
 
+/** Google sign-in for our own log-in page: identity only, no Calendar scopes, no offline access. */
+export function signInUrl(cfg: GoogleConfig, redirect: string, state: string): string {
+  const p = new URLSearchParams({ client_id: cfg.clientId, redirect_uri: redirect, response_type: "code", scope: "openid email", prompt: "select_account", state });
+  return `${AUTH_URL}?${p}`;
+}
+
 function reasonOf(body: unknown): string {
   const b = body as { error?: unknown } | null;
   if (typeof b?.error === "string") return b.error; // token endpoint: { error: "invalid_grant" }

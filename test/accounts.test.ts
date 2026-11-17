@@ -3,6 +3,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { app } from "../src/worker/index";
 import { sha256Hex } from "../src/worker/lib/ids";
 import { testEnv, uniq } from "./helpers";
+import { signState } from "../src/worker/google/state";
 
 const BASE = "https://book.example.test";
 type Sent = { to: string; subject: string; text: string };
@@ -237,5 +238,121 @@ describe("email sign-in", () => {
     const link = await req(env, "/api/v1/admin-sessions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "X-Calendar-User": "u1" } });
     const { token } = (await link.json()) as { token: string };
     expect((await asOwner(env, token, "/account")).status).toBe(404);
+  });
+});
+
+const b64 = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const idToken = (claims: Record<string, unknown>) => `h.${b64(JSON.stringify(claims))}.s`;
+
+/** Starts Google sign-in; returns the cookie nonce and state Google would carry back. */
+async function startGoogle(env: typeof testEnv, invite?: string) {
+  const res = await req(env, `/api/account/google/start${invite ? `?invite=${invite}` : ""}`);
+  expect(res.status).toBe(302);
+  const loc = new URL(res.headers.get("Location")!);
+  const cookie = /osc_signin=([^;]+)/.exec(res.headers.get("Set-Cookie") ?? "")?.[1];
+  return { loc, cookie, state: loc.searchParams.get("state")! };
+}
+
+function fakeGoogle(claims: Record<string, unknown>) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).startsWith("https://oauth2.googleapis.com/token")) {
+      return new Response(JSON.stringify({ access_token: "a", expires_in: 3600, id_token: idToken(claims) }), { headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("unexpected", { status: 500 });
+  });
+}
+
+const callback = (env: typeof testEnv, state: string, cookie: string | undefined) =>
+  req(env, `/api/account/google/callback?code=c&state=${encodeURIComponent(state)}`, { headers: cookie ? { Cookie: `osc_signin=${cookie}` } : {} });
+const landing = (res: Response) => res.headers.get("Location") ?? "";
+
+describe("Google sign-in", () => {
+  it("moves to PUBLIC_URL's host before setting the cookie", async () => {
+    const { env } = envWith();
+    const res = await req(env, "https://opensourcecalendar.example.test/api/account/google/start?invite=abc");
+    expect(res.status).toBe(302);
+    expect(landing(res)).toBe(`${BASE}/api/account/google/start?invite=abc`);
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it("asks Google for sign-in only, with a cookie tied to this browser", async () => {
+    const { env } = envWith();
+    const { loc, cookie } = await startGoogle(env);
+    expect(loc.origin).toBe("https://accounts.google.com");
+    expect(loc.searchParams.get("scope")).toBe("openid email");
+    expect(loc.searchParams.get("redirect_uri")).toBe(`${BASE}/api/account/google/callback`);
+    expect(cookie).toBeTruthy();
+  });
+
+  it("creates an account with an invite and logs it in", async () => {
+    const { env } = envWith();
+    const address = email();
+    const { state, cookie } = await startGoogle(env, await makeInvite(env));
+    fakeGoogle({ sub: `g-${uniq()}`, email: address, email_verified: true });
+    const res = await callback(env, state, cookie);
+    expect(landing(res)).toMatch(new RegExp(`^${BASE}/admin#login=`));
+    const token = landing(res).split("#login=")[1];
+    expect(await (await asOwner(env, token, "/account")).json()).toEqual({ email: address });
+  });
+
+  it("refuses a missing or wrong cookie, and a Calendar-connect state", async () => {
+    const { env } = envWith();
+    const { state, cookie } = await startGoogle(env, await makeInvite(env));
+    fakeGoogle({ sub: `g-${uniq()}`, email: email(), email_verified: true });
+    expect(landing(await callback(env, state, undefined))).toBe(`${BASE}/login?error=expired`);
+    expect(landing(await callback(env, state, "wrong"))).toBe(`${BASE}/login?error=expired`);
+    const calendarState = await signState("test-session-secret", "cal_x", cookie!, Date.now());
+    expect(landing(await callback(env, calendarState, cookie))).toBe(`${BASE}/login?error=expired`);
+  });
+
+  it("refuses a tampered or expired sign-in state", async () => {
+    const { env } = envWith();
+    const { signSignInState } = await import("../src/worker/accounts/signin-state");
+    const { state, cookie } = await startGoogle(env, await makeInvite(env));
+    fakeGoogle({ sub: `g-${uniq()}`, email: email(), email_verified: true });
+    const [payload, sig] = state.split(".");
+    expect(landing(await callback(env, `${payload}x.${sig}`, cookie))).toBe(`${BASE}/login?error=expired`);
+    const old = await signSignInState("test-session-secret", cookie!, null, Date.now() - 16 * 60_000);
+    expect(landing(await callback(env, old, cookie))).toBe(`${BASE}/login?error=expired`);
+  });
+
+  it("logs an existing Google account in again by its Google id", async () => {
+    const { env } = envWith();
+    const sub = `g-${uniq()}`;
+    const address = email();
+    let g = await startGoogle(env, await makeInvite(env));
+    fakeGoogle({ sub, email: address, email_verified: true });
+    expect(landing(await callback(env, g.state, g.cookie))).toMatch(/#login=/);
+    vi.restoreAllMocks();
+    g = await startGoogle(env); // no invite this time
+    fakeGoogle({ sub, email: address, email_verified: true });
+    expect(landing(await callback(env, g.state, g.cookie))).toMatch(/#login=/);
+  });
+
+  it("without an invite, an unknown Google account gets no_account", async () => {
+    const { env } = envWith();
+    const { state, cookie } = await startGoogle(env);
+    fakeGoogle({ sub: `g-${uniq()}`, email: email(), email_verified: true });
+    expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=no_account`);
+  });
+
+  it("refuses an unverified Google email", async () => {
+    const { env } = envWith();
+    const { state, cookie } = await startGoogle(env, await makeInvite(env));
+    fakeGoogle({ sub: `g-${uniq()}`, email: email() });
+    expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=google`);
+  });
+
+  it("links Google to an email account once, and refuses a different Google account later", async () => {
+    const { env, sent } = envWith();
+    const s = await signUp(env, sent);
+    const sub = `g-${uniq()}`;
+    let g = await startGoogle(env);
+    fakeGoogle({ sub, email: s.address, email_verified: true });
+    expect(landing(await callback(env, g.state, g.cookie))).toMatch(/#login=/);
+    vi.restoreAllMocks();
+    g = await startGoogle(env);
+    fakeGoogle({ sub: `g-other-${uniq()}`, email: s.address, email_verified: true });
+    expect(landing(await callback(env, g.state, g.cookie))).toBe(`${BASE}/login?error=google_mismatch`);
   });
 });

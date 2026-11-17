@@ -1,14 +1,16 @@
 // Hosted sign-up and log-in (invite-only). Everything here 404s unless signupOn(env).
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { hostedSession } from "../auth";
 import { publicBase, signupOn } from "../accounts/config";
 import { signInEmail } from "../accounts/email";
+import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
 import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
 import { emailFrom } from "../email/send";
-import { googleConfig } from "../google/client";
+import { exchangeCode, googleConfig, signInUrl } from "../google/client";
 import { parseBody } from "../lib/http";
-import { sha256Hex } from "../lib/ids";
+import { randomToken, sha256Hex } from "../lib/ids";
 import { verifyTurnstile } from "../lib/turnstile";
 import type { AppEnv, Bindings } from "../types";
 
@@ -73,4 +75,59 @@ accounts.post("/email-link/verify", async (c) => {
   if (!("user" in found)) return c.json({ error: "invite_used" }, 400);
   await touchLogin(db, found.user.id, now);
   return c.json({ ...(await hostedSession(c.env, found.user.id, now)), email: found.user.email });
+});
+
+const COOKIE = "osc_signin";
+const COOKIE_ATTRS = "Path=/api/account/google; HttpOnly; Secure; SameSite=Lax";
+const callbackUrl = (env: Bindings) => `${publicBase(env)}/api/account/google/callback`;
+function secret(env: Bindings): string {
+  if (!env.SESSION_SECRET) throw new Error("SESSION_SECRET is not set");
+  return env.SESSION_SECRET;
+}
+
+accounts.get("/google/start", async (c) => {
+  const cfg = googleConfig(c.env);
+  if (!cfg) return c.notFound();
+  const here = new URL(c.req.url);
+  const home = new URL(publicBase(c.env));
+  // The cookie must be set on the host Google sends the browser back to.
+  if (here.host !== home.host) return c.redirect(`${home.origin}${here.pathname}${here.search}`, 302);
+  const invite = c.req.query("invite");
+  const nonce = randomToken();
+  const state = await signSignInState(secret(c.env), nonce, invite ? await sha256Hex(invite) : null, Date.now());
+  c.header("Set-Cookie", `${COOKIE}=${nonce}; Max-Age=900; ${COOKIE_ATTRS}`);
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("Cache-Control", "no-store");
+  return c.redirect(signInUrl(cfg, callbackUrl(c.env), state), 302);
+});
+
+accounts.get("/google/callback", async (c) => {
+  const cfg = googleConfig(c.env);
+  if (!cfg) return c.notFound();
+  c.header("Set-Cookie", `${COOKIE}=; Max-Age=0; ${COOKIE_ATTRS}`);
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("Cache-Control", "no-store");
+  const fail = (error: string) => c.redirect(`${publicBase(c.env)}/login?error=${error}`, 302);
+  const now = Date.now();
+  const state = await verifySignInState(secret(c.env), c.req.query("state") ?? "", now);
+  const cookie = getCookie(c, COOKIE);
+  if (!state || !cookie || cookie !== state.nonce) return fail("expired");
+  const code = c.req.query("code");
+  if (!code) return fail("cancelled");
+  let who: { sub: string; email: string } | null = null;
+  try {
+    who = readIdToken((await exchangeCode(cfg, code, callbackUrl(c.env))).id_token);
+  } catch {
+    return fail("google");
+  }
+  if (!who) return fail("google");
+  const db = c.env.DB;
+  let found: Found | { inviteUsed: true } = await lookUp(db, who.email, who.sub);
+  if (!found && state.inviteHash) found = await createUserWithInvite(db, who.email, who.sub, state.inviteHash, now);
+  if (!found) return fail("no_account");
+  if ("mismatch" in found) return fail("google_mismatch");
+  if ("inviteUsed" in found) return fail("invite_used");
+  await touchLogin(db, found.user.id, now);
+  const { token } = await hostedSession(c.env, found.user.id, now);
+  return c.redirect(`${publicBase(c.env)}/admin#login=${token}`, 302);
 });
