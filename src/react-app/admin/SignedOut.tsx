@@ -1,19 +1,21 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "../api";
 import { adminApi } from "./api";
-import { setToken } from "./session";
+import { lastLoginWasHosted, setToken } from "./session";
 
 /**
  * Shown without a valid session. Standalone installs get a password form;
  * installs opened from a host app are told to open the calendar again from there.
  */
 export function SignedOut({ ended, onSignedIn }: { ended: boolean; onSignedIn: () => void }) {
-  const [mode, setMode] = useState<"checking" | "password" | "host">("checking");
+  const [mode, setMode] = useState<"checking" | "password" | "host" | "hosted">("checking");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // Hosted accounts log in on /login; the token was already cleared, so this flag is what remembers it.
+    if (lastLoginWasHosted()) return setMode("hosted");
     let live = true;
     // An empty password is always refused: 401 means password login exists, 404 means it doesn't.
     adminApi.login("").then(
@@ -48,6 +50,15 @@ export function SignedOut({ ended, onSignedIn }: { ended: boolean; onSignedIn: (
     <div className="admin-center">
       <main className="admin-card">
         {mode === "checking" && <span className="skeleton block" aria-label="Loading" />}
+        {mode === "hosted" && (
+          <>
+            <h1 className="title">{ended ? "Your session ended" : "Log in to your calendar"}</h1>
+            <p className="lede">Log in again to keep going.</p>
+            <a className="btn btn-primary" href="/login">
+              Log in
+            </a>
+          </>
+        )}
         {mode === "host" && (
           <>
             <h1 className="title">{ended ? "Your session ended" : "Sign in from your app"}</h1>

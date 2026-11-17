@@ -337,6 +337,7 @@ export const adminApi = {
   login: (password: string) =>
     request<{ token: string }>("/login", { method: "POST", json: { password }, auth: false }),
   calendar: () => request<AdminCalendar>("/calendar"),
+  account: () => request<{ email: string }>("/account"),
   createCalendar: (input: { slug: string; time_zone: string }) =>
     request<AdminCalendar>("/calendar", { method: "POST", json: input }),
   updateCalendar: (patch: { slug?: string; time_zone?: string; rules?: Partial<Rules>; branding?: Partial<Branding>; notifications?: Partial<Notifications> }) =>

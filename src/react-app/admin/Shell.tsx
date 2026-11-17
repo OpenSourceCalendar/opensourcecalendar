@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { AdminCalendar, GoogleStatus } from "./api";
 import { Icon, type IconName } from "./Icon";
-import { signedInWithPassword } from "./session";
+import { canSignOut } from "./session";
 
 export const NAV: { path: string; label: string; icon: IconName }[] = [
   { path: "/admin", label: "Dashboard", icon: "dashboard" },
@@ -139,7 +139,7 @@ export function Shell({
             <Icon name="plus" />
             New Entry
           </button>
-          {signedInWithPassword() && (
+          {canSignOut() && (
             <button type="button" className="link muted side-signout" onClick={onSignOut}>
               Sign out
             </button>
