@@ -44,6 +44,24 @@ describe("billing cron", () => {
     await runBillingCron(env, reconcileAt);
     expect((await getBilling(env.DB, a.userId))!.status).toBe("canceled");
   });
+  it("reconcile skips ended rows past grace, and finds the subscription for a customer that missed every webhook", async () => {
+    const env = billingEnv();
+    vi.restoreAllMocks();
+    const fake = new FakeStripe();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const ended = await hostedAccount(env);
+    const old = fake.addSub({ customer: `cus_${ended.userId}`, price: "price_pro_month", status: "canceled" });
+    await setBilling(env, ended.userId, { stripe_customer_id: `cus_${ended.userId}`, stripe_subscription_id: old.id, plan: "pro", status: "canceled" });
+    const missed = await hostedAccount(env);
+    await setBilling(env, missed.userId, { stripe_customer_id: `cus_${missed.userId}` });
+    fake.addSub({ customer: `cus_${missed.userId}`, price: "price_pro_month", status: "canceled", created: 1_000 });
+    const newest = fake.addSub({ customer: `cus_${missed.userId}`, price: "price_pro_year", status: "active", created: 2_000 });
+    const reconcileAt = Date.UTC(2031, 0, 8, 10, 0, 30);
+    await env.DB.prepare("DELETE FROM stripe_events WHERE id = 'reconcile:2031-01-08'").run();
+    await runBillingCron(env, reconcileAt);
+    expect(fake.calls.some((c) => c.path.includes(old.id))).toBe(false);
+    expect(await getBilling(env.DB, missed.userId)).toMatchObject({ stripe_subscription_id: newest.id, plan: "pro", interval: "year", status: "active" });
+  });
   it("deletes stripe_events older than 30 days", async () => {
     const env = billingEnv();
     const now = Date.now();

@@ -4,7 +4,8 @@ import { enqueueEmail } from "../email/outbox";
 import type { Bindings } from "../types";
 import { billingOn } from "./config";
 import { accountCalendars } from "./store";
-import { droppedToFree, syncSubscription } from "./sync";
+import { stripe } from "./stripe";
+import { applySubscription, droppedToFree, syncSubscription, type StripeSub } from "./sync";
 
 const DAY = 86_400_000;
 const REMIND_BEFORE = 7 * DAY;
@@ -49,10 +50,22 @@ export async function runBillingCron(env: Bindings, now: number): Promise<void> 
   // (id 'reconcile:<date>'), which the cleanup below clears after 30 days.
   const claimed = isReconcileMinute(now) && (await db.prepare("INSERT OR IGNORE INTO stripe_events (id, type, received_at) VALUES (?, 'reconcile', ?)").bind(`reconcile:${today}`, now).run()).meta.changes;
   if (claimed) {
-    const subs = await db.prepare("SELECT user_id, stripe_subscription_id FROM billing WHERE stripe_subscription_id IS NOT NULL").all<{ user_id: string; stripe_subscription_id: string }>();
-    for (const s of subs.results) {
+    // Skips subscriptions that ended for good (canceled is final in Stripe) once any grace is over.
+    const rows = await db.prepare(
+      `SELECT user_id, stripe_customer_id, stripe_subscription_id FROM billing
+       WHERE (stripe_subscription_id IS NOT NULL OR stripe_customer_id IS NOT NULL)
+         AND NOT (status IN ('canceled', 'incomplete_expired') AND COALESCE(grace_until, 0) <= ?)`,
+    ).bind(now).all<{ user_id: string; stripe_customer_id: string | null; stripe_subscription_id: string | null }>();
+    for (const s of rows.results) {
       try {
-        await syncSubscription(env, s.user_id, s.stripe_subscription_id, now);
+        if (s.stripe_subscription_id) {
+          await syncSubscription(env, s.user_id, s.stripe_subscription_id, now);
+        } else {
+          // A customer with no subscription on our side: every webhook for it may have been missed. Take the newest.
+          const { data } = await stripe<{ data: StripeSub[] }>(env, "GET", "/v1/subscriptions", { customer: s.stripe_customer_id, status: "all", limit: 5 });
+          const newest = data.sort((a, b) => b.created - a.created)[0];
+          if (newest) await applySubscription(env, s.user_id, newest, now);
+        }
       } catch (err) {
         console.error(JSON.stringify({ event: "billing_reconcile_failed", user: s.user_id, error: String(err).slice(0, 200) }));
       }
