@@ -21,6 +21,7 @@ import { sendWith } from "./email/send";
 import { runGoogleSync } from "./google/busy";
 import { runGoogleJobs } from "./google/push";
 import { cleanUpLinks } from "./accounts/store";
+import { runBillingCron } from "./billing/cron";
 import type { AppEnv, Bindings } from "./types";
 
 const app = new Hono<AppEnv>();
@@ -89,5 +90,6 @@ export default {
     ctx.waitUntil(runGoogleSync(env, now).catch(log("google_sync")));
     ctx.waitUntil(runWebhookJobs(env, now).catch(log("webhook_run")));
     ctx.waitUntil(cleanUpLinks(env.DB, now).catch(log("login_links_cleanup")));
+    ctx.waitUntil(runBillingCron(env, now).catch(log("billing_cron")));
   },
 };
