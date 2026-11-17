@@ -4,7 +4,7 @@ export const PRIVACY_UPDATED = "November 16, 2026";
 
 // Keep this in step with what the code really stores. Checked against migrations 0001–0009,
 // routes/customers.ts (deletion), google/push.ts (event contents), google/busy.ts and email/outbox.ts (30-day job cleanup).
-export function privacyPage() {
+export function privacyPage(login?: string) {
   const band = `<div class="wrap doc-head"><h1>Privacy policy</h1><p>Last updated ${PRIVACY_UPDATED}</p></div>`;
   const body = `<article class="wrap"><div class="doc">
 <h2>Who we are</h2>
@@ -39,6 +39,9 @@ export function privacyPage() {
 <h3>When you join the waitlist</h3>
 <p>Your email address and the date you joined. Nothing else.</p>
 
+<h3>When you create an account</h3>
+<p>Your email address, the ID of your Google account if you sign in with Google (not your Google password or calendar), and when the account was created and last used. When you ask for a sign-in link, we keep a scrambled (hashed) form of your network address for up to 2 days, to stop sign-in emails being abused.</p>
+
 <h3>Technical information</h3>
 <p>To keep the service working and safe, our hosting provider Cloudflare processes your IP address and basic browser details when you load a page, and keeps short-lived technical logs. The booking page uses Cloudflare Turnstile to check that a booking comes from a person, not a bot; Turnstile works without advertising cookies.</p>
 
@@ -65,7 +68,7 @@ export function privacyPage() {
 <h2>Who else handles the information</h2>
 <ul>
 <li><strong>Cloudflare</strong> hosts the service, stores its data, sends its emails and runs the Turnstile bot check.</li>
-<li><strong>Google</strong>, only when a business connects Google Calendar, as described above.</li>
+<li><strong>Google</strong>, only when a business connects Google Calendar or signs in with Google, as described above.</li>
 <li><strong>The business you booked with</strong>, which can see and manage your booking. A business can also connect its own software (for example a customer database) to receive booking details.</li>
 </ul>
 <p>We may also disclose information if the law requires it, or to protect people or the service from harm or fraud.</p>
@@ -77,6 +80,7 @@ export function privacyPage() {
 <li>Google tokens and busy times are deleted when the business disconnects Google.</li>
 <li>Waitlist addresses are kept until hosted plans open and we have sent the one email, or until you ask us to remove yours.</li>
 <li>Text-message permission records are kept after a deletion as proof that permission was given.</li>
+<li>Accounts are kept until you ask us to delete yours. Sign-in link records are deleted after 2 days.</li>
 </ul>
 
 <h2>Your choices and rights</h2>
@@ -87,7 +91,7 @@ export function privacyPage() {
 </ul>
 
 <h2>Cookies and tracking</h2>
-<p>We do not use advertising or analytics cookies, and we do not track you across other websites. The owner screens keep a sign-in key in your browser for the current tab, and remember small display choices such as the calendar view.</p>
+<p>We do not use advertising or analytics cookies, and we do not track you across other websites. Signing in with Google sets one cookie for up to 15 minutes, only to protect that sign-in. The owner screens keep a sign-in key in your browser (for hosted accounts, for up to 30 days) and remember small display choices such as the calendar view.</p>
 
 <h2>Security</h2>
 <p>All traffic is encrypted. Google sign-in tokens are encrypted before they are stored. Customers’ manage links are signed so they can’t be guessed. No system is perfectly secure, but we work to protect your information and will tell affected people about a breach as the law requires.</p>
@@ -110,5 +114,6 @@ export function privacyPage() {
     path: "/privacy",
     band,
     body,
+    login,
   });
 }

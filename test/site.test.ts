@@ -41,6 +41,12 @@ describe("website pages", () => {
     expect(body).toContain("showModal");
   });
 
+  it("shows Log in only when sign-up is on, pointing at PUBLIC_URL", async () => {
+    expect(await (await app.request("/", {}, siteOn)).text()).not.toContain(">Log in<");
+    const on = { ...siteOn, SIGNUP: "invite", PUBLIC_URL: "https://book.example.test" };
+    expect(await (await app.request("/", {}, on)).text()).toContain('href="https://book.example.test/login"');
+  });
+
   it("shows the waitlist result only for known states", async () => {
     expect(await (await app.request("/?waitlist=joined", {}, siteOn)).text()).toContain("You’re on the list");
     expect(await (await app.request("/?waitlist=bad", {}, siteOn)).text()).toContain("doesn’t look right");

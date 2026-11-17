@@ -3,7 +3,7 @@ import { GITHUB_URL, page, SITE_NAME, SUPPORT_EMAIL } from "./layout";
 export const TERMS_UPDATED = "November 16, 2026";
 const TERMS_EMAIL = "terms@opensourcecalendar.com";
 
-export function termsPage() {
+export function termsPage(login?: string) {
   const band = `<div class="wrap doc-head"><h1>Terms of service</h1><p>Last updated ${TERMS_UPDATED}</p></div>`;
   const body = `<article class="wrap"><div class="doc">
 <h2>About these terms</h2>
@@ -75,5 +75,6 @@ export function termsPage() {
     path: "/terms",
     band,
     body,
+    login,
   });
 }

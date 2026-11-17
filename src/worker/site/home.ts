@@ -66,7 +66,7 @@ const WAIT_MSG: Record<Exclude<WaitlistState, null>, string> = {
   bad: "That email address doesn’t look right. Please check it and try again.",
 };
 
-export function homePage(wait: WaitlistState) {
+export function homePage(wait: WaitlistState, login?: string) {
   const band = `<div class="wrap hero">
 <div class="hero-text">
 <span class="pill">Open source · AGPL-3.0 · Runs on Cloudflare</span>
@@ -179,5 +179,6 @@ ${msg}
     path: "/",
     band,
     body,
+    login,
   });
 }

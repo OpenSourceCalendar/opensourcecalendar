@@ -3,6 +3,7 @@ import { z } from "zod";
 import { homePage, type WaitlistState } from "./home";
 import { privacyPage } from "./privacy";
 import { termsPage } from "./terms";
+import { publicBase, signupOn } from "../accounts/config";
 import type { AppEnv } from "../types";
 
 /** Enough for any real launch list; stops a script filling the table. */
@@ -14,6 +15,8 @@ export const site = new Hono<AppEnv>();
 
 const SITE_ORIGIN = "https://opensourcecalendar.com";
 const on = (env: AppEnv["Bindings"]) => env.MARKETING_SITE === "on";
+/** The header's Log in link, only while hosted sign-up is on. */
+const loginUrl = (env: AppEnv["Bindings"]) => (signupOn(env) ? `${publicBase(env)}/login` : undefined);
 
 /** Front page of a self-hosted copy: no branding of ours, kept out of search. */
 const PLAIN_HOME = `<!doctype html>
@@ -43,12 +46,12 @@ site.get("/", (c) => {
   if (!on(c.env)) return html(PLAIN_HOME);
   const w = c.req.query("waitlist");
   const state: WaitlistState = w === "joined" || w === "bad" ? w : null;
-  const res = html(homePage(state));
+  const res = html(homePage(state, loginUrl(c.env)));
   if (state) res.headers.set("cache-control", "no-store");
   return res;
 });
-site.get("/privacy", (c) => (on(c.env) ? html(privacyPage()) : c.notFound()));
-site.get("/terms", (c) => (on(c.env) ? html(termsPage()) : c.notFound()));
+site.get("/privacy", (c) => (on(c.env) ? html(privacyPage(loginUrl(c.env))) : c.notFound()));
+site.get("/terms", (c) => (on(c.env) ? html(termsPage(loginUrl(c.env))) : c.notFound()));
 
 site.get("/robots.txt", (c) => {
   const lines = ["User-agent: *", "Allow: /", "Disallow: /api/", "Disallow: /admin", "Disallow: /m/"];
