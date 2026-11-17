@@ -6,6 +6,7 @@ import { locationText } from "../lib/location";
 import { parseBranding, parseNotifications, parseRules } from "../settings";
 import type { Bindings, CalendarRow } from "../types";
 import { buildAccountEmail } from "../billing/emails";
+import { entitlements } from "../billing/entitlements";
 import { calendarOverDailyCap } from "./limits";
 import type { EmailKind, EmailPayload, OutgoingEmail, Sender } from "./outbox";
 import { customerEmail, oneLine, ownerEmail, type CustomerKind, type EmailFacts, type OwnerKind } from "./templates";
@@ -69,6 +70,10 @@ export async function buildEmail(env: Bindings, calendarId: string, kind: EmailK
   if (!notifications[SETTING[kind]!]) return { skip: "turned_off" };
   const appt = await getAppointmentFull(db, cal.id, payload.appointment_id);
   if (!appt) return { skip: "no_appointment" };
+  // Free plan over its monthly limit: this booking never sends email (checked here, at send time, for every kind).
+  if ((appt as { emails_off?: number }).emails_off) return { skip: "free_limit" };
+  const ent = await entitlements(env, cal, now);
+  if (kind === "email.customer.reminder" && !ent.reminders) return { skip: "plan" };
 
   const forOwner = kind.startsWith("email.owner.");
   const cancelled = appt.status === "cancelled";
@@ -110,7 +115,7 @@ export async function buildEmail(env: Bindings, calendarId: string, kind: EmailK
     scheduleUrl: `${base}/admin/schedule`,
     locationText: locationText(service, forOwner),
     confirmationMessage: notifications.confirmation_message,
-    poweredBy: parseRules(cal.rules).powered_by,
+    poweredBy: parseRules(cal.rules).powered_by || ent.footerForced,
     cancelReason: appt.cancel_reason,
     customer: { name: `${appt.contact_first_name} ${appt.contact_last_name}`.trim(), phone: appt.contact_phone, email: appt.contact_email },
     note: appt.note,

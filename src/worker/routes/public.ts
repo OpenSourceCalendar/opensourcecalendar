@@ -15,6 +15,7 @@ import { originOf, queueEmails } from "../email/queue";
 import { checkGoogleWindow } from "../google/busy";
 import { googlePushJob } from "../google/push";
 import { webhookJob } from "../webhooks/job";
+import { entitlements } from "../billing/entitlements";
 import { parseBranding, parseNotifications, parseRules } from "../settings";
 import { buildIcs } from "../booking/ics";
 import { findSlots } from "../slots/find-slots";
@@ -113,6 +114,7 @@ publicRoutes.get("/manage/:token", async (c) => {
   if (!appt) return notFound(c);
   const cal = await calendarById(c.env.DB, appt.calendar_id);
   const rules = parseRules(cal.rules);
+  const ent = await entitlements(c.env, cal);
   return c.json({
     appointment: publicAppointmentJson(appt),
     business: publicBranding(parseBranding(cal.branding)),
@@ -122,7 +124,7 @@ publicRoutes.get("/manage/:token", async (c) => {
     change_cutoff_hours: rules.change_cutoff_hours,
     cancel_reason_required: rules.cancel_reason_required,
     max_days_ahead: rules.max_days_ahead,
-    powered_by: rules.powered_by,
+    powered_by: rules.powered_by || ent.footerForced,
   });
 });
 
@@ -269,6 +271,7 @@ publicRoutes.get("/:slug", async (c) => {
   const cal = await calendarBySlug(db, c.req.param("slug"));
   if (!cal) return notFound(c);
   const rules = parseRules(cal.rules);
+  const ent = await entitlements(c.env, cal);
   const { results } = await db.prepare(
     "SELECT * FROM services WHERE calendar_id = ? AND deleted_at IS NULL AND hidden = 0 ORDER BY sort_order, created_at",
   )
@@ -287,7 +290,7 @@ publicRoutes.get("/:slug", async (c) => {
       cancel_reason_required: rules.cancel_reason_required,
       change_cutoff_hours: rules.change_cutoff_hours,
       max_days_ahead: rules.max_days_ahead,
-      powered_by: rules.powered_by,
+      powered_by: rules.powered_by || ent.footerForced,
     },
   });
 });
