@@ -40,7 +40,7 @@ export function BookingPage({ slug }: { slug: string }) {
     api.calendar(slug).then(
       (c) => {
         setCal(c);
-        applyBrand(c.branding.color);
+        applyBrand(c.branding.color, c.branding.style);
         document.title = `Book with ${c.branding.business_name || "us"}`;
         const first: Step = c.services.length === 1 ? "time" : "service";
         if (c.services.length === 1) setServiceId(c.services[0].id);
@@ -141,7 +141,7 @@ export function BookingPage({ slug }: { slug: string }) {
   const title = { service: "Choose a service", time: "Pick a date & time", info: "Your details", done: "" }[step];
 
   return (
-    <div className="page">
+    <div className="page" data-style={cal.branding.style}>
       <div className="sheet">
         <Header branding={cal.branding} onBack={step !== firstStep && step !== "done" ? () => history.back() : undefined}>
           {step !== "done" && <Steps labels={labels} current={stepIndex} />}

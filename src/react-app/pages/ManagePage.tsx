@@ -37,7 +37,7 @@ export function ManagePage({ token }: { token: string }) {
     api.manage(token).then(
       (v) => {
         setView(v);
-        applyBrand(v.business.color);
+        applyBrand(v.business.color, v.business.style);
         document.title = `Your appointment · ${v.business.business_name || "Booking"}`;
       },
       (e) => setLoadError(e instanceof ApiError ? e : new ApiError(0, "network")),
@@ -143,7 +143,7 @@ export function ManagePage({ token }: { token: string }) {
 
   if (mode === "deleted") {
     return (
-      <div className="page">
+      <div className="page" data-style={b.style}>
         <div className="sheet">
           <Header branding={b}>
             <h1 className="title" tabIndex={-1} ref={deletedRef}>
@@ -162,7 +162,7 @@ export function ManagePage({ token }: { token: string }) {
   }
 
   return (
-    <div className="page">
+    <div className="page" data-style={b.style}>
       <div className="sheet">
         <Header branding={b} onBack={mode === "reschedule" ? () => switchMode("view") : undefined}>
           <h1 className="title">{mode === "reschedule" ? "Pick a new time" : "Your appointment"}</h1>

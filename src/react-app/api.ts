@@ -1,5 +1,7 @@
 // Typed helpers for the public API. Every failure is thrown as an ApiError.
 
+import type { PageStyle } from "./theme";
+
 export type Field = "first_name" | "last_name" | "email" | "phone";
 
 export interface Branding {
@@ -7,6 +9,7 @@ export interface Branding {
   phone: string;
   tagline: string;
   color: string;
+  style: PageStyle;
   logo_url: string | null;
   hero_url: string | null;
 }
