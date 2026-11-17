@@ -65,6 +65,17 @@ describe("POST /billing/checkout", () => {
     for (let i = 0; i < 5; i++) expect((await post(env, a.token, "/checkout", { plan: "pro", interval: "month" })).status).toBe(200);
     expect((await post(env, a.token, "/checkout", { plan: "pro", interval: "month" })).status).toBe(429);
   });
+  it("two checkouts at once: only one reaches Stripe, the other is 409 checkout_in_progress", async () => {
+    const env = billingEnv();
+    const fake = new FakeStripe();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { stripe_customer_id: `cus_${a.userId}` });
+    const res = await Promise.all([1, 2].map(() => post(env, a.token, "/checkout", { plan: "pro", interval: "month" })));
+    expect(res.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(await res.find((r) => r.status === 409)!.json()).toEqual({ error: "checkout_in_progress" });
+    expect(fake.sessions.length).toBe(1);
+  });
   it("is 404 for sessions that aren't hosted accounts", async () => {
     // A host-app owner session (createAdminSession) can't reach billing.
     const env = billingEnv();

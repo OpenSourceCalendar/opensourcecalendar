@@ -64,7 +64,10 @@ billing.post("/checkout", async (c) => {
   const row = (await getBilling(db, userId))!;
   const recent = (JSON.parse(row.checkout_attempts) as number[]).filter((t) => t > now - HOUR);
   if (recent.length >= CHECKOUTS_PER_HOUR) return c.json({ error: "too_many_attempts" }, 429);
-  await db.prepare("UPDATE billing SET checkout_attempts = ?, updated_at = ? WHERE user_id = ?").bind(JSON.stringify([...recent, now]), now, userId).run();
+  // Claimed only if no other request changed the list since we read it, so two at once can't both reach Stripe.
+  const claim = await db.prepare("UPDATE billing SET checkout_attempts = ?, updated_at = ? WHERE user_id = ? AND checkout_attempts = ?")
+    .bind(JSON.stringify([...recent, now]), now, userId, row.checkout_attempts).run();
+  if (!claim.meta.changes) return c.json({ error: "checkout_in_progress" }, 409);
 
   try {
     let customer = row.stripe_customer_id;
