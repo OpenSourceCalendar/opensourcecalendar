@@ -1,5 +1,8 @@
 // A tiny in-memory Stripe for tests, installed with vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch).
 import { vi } from "vitest";
+import { app } from "../src/worker/index";
+import { hostedSession } from "../src/worker/auth";
+import { testEnv, uniq } from "./helpers";
 
 export const BILLING_ENV = {
   SIGNUP: "invite",
@@ -88,4 +91,31 @@ export class FakeStripe {
     }
     return new Response(JSON.stringify({ error: { code: "fake_unhandled", message: `${method} ${p}` } }), { status: 400 });
   });
+}
+
+export const billingEnv = (extra: Record<string, unknown> = {}) =>
+  ({ ...testEnv, ...BILLING_ENV, EMAIL_FROM: "hello@example.test", OPERATOR_EMAIL: "support@example.test", ...extra }) as unknown as typeof testEnv;
+
+/** A hosted account with a calendar: { userId, token, calendarId, slug }. */
+export async function hostedAccount(env: typeof testEnv) {
+  const userId = `usr_${uniq()}`;
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)").bind(userId, `${userId}@example.test`, now).run();
+  const { token } = await hostedSession(env, userId, now);
+  const slug = `acct-${uniq()}`;
+  const res = await app.request("https://book.example.test/api/admin/calendar", {
+    method: "POST", headers: { Authorization: `Session ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ slug, time_zone: "America/Los_Angeles" }),
+  }, env);
+  if (res.status !== 201) throw new Error(`hostedAccount: ${res.status} ${await res.text()}`);
+  const { id } = (await res.json()) as { id: string };
+  return { userId, token, calendarId: id, slug };
+}
+
+export async function setBilling(env: typeof testEnv, userId: string, fields: Record<string, unknown>) {
+  const cols = Object.keys(fields);
+  await env.DB.prepare(
+    `INSERT INTO billing (user_id, updated_at${cols.map((c) => `, ${c}`).join("")}) VALUES (?, ?${cols.map(() => ", ?").join("")})
+     ON CONFLICT(user_id) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(", ") || "updated_at = excluded.updated_at"}`,
+  ).bind(userId, Date.now(), ...Object.values(fields)).run();
 }
