@@ -7,8 +7,10 @@ import { HOSTED_APP, requireCalendar } from "../auth";
 import { billingOn, priceFor } from "../billing/config";
 import { FREE_MONTHLY_EMAIL_BOOKINGS, isPaid, LIVE_STATUSES } from "../billing/entitlements";
 import { bookingsThisMonth } from "../billing/limit";
-import { ensureBillingRow, getBilling, userEmail } from "../billing/store";
-import { stripe, StripeError } from "../billing/stripe";
+import { billingByCustomer, ensureBillingRow, getBilling, userEmail } from "../billing/store";
+import { stripe, StripeError, verifyStripeSignature } from "../billing/stripe";
+import { sendOperatorEmail } from "../billing/emails";
+import { syncSubscription } from "../billing/sync";
 import { parseBody } from "../lib/http";
 import type { AppEnv } from "../types";
 
@@ -120,4 +122,59 @@ billing.post("/portal", async (c) => {
   }
 });
 
-export type { Context };
+type StripeEvent = { id: string; type: string; data: { object: Record<string, unknown> } };
+const SUB_EVENTS = new Set(["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "customer.subscription.trial_will_end"]);
+
+/** POST /api/billing/webhook — no session; Stripe's signature is the only way in. */
+export async function billingWebhook(c: Context<AppEnv>) {
+  const env = c.env;
+  if (!billingOn(env)) return c.json({ error: "not_found" }, 404);
+  const raw = await c.req.text(); // the exact bytes Stripe signed; never re-serialize
+  if (!(await verifyStripeSignature(env.STRIPE_WEBHOOK_SECRET!, c.req.header("Stripe-Signature") ?? "", raw, Date.now()))) {
+    return c.json({ error: "bad_signature" }, 400);
+  }
+  const event = JSON.parse(raw) as StripeEvent;
+  const now = Date.now();
+  const seen = await env.DB.prepare("INSERT OR IGNORE INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)").bind(event.id, event.type, now).run();
+  if (!seen.meta.changes) return c.json({ received: true }); // already handled
+
+  try {
+    const o = event.data.object;
+    if (event.type === "charge.dispute.created") {
+      const amount = typeof o.amount === "number" ? `${(o.amount / 100).toFixed(2)} ${String(o.currency ?? "").toUpperCase()}` : "unknown amount";
+      await sendOperatorEmail(env, "A customer opened a dispute", `Dispute ${String(o.id)} on charge ${String(o.charge)} for ${amount}. https://dashboard.stripe.com/disputes/${encodeURIComponent(String(o.id))}`);
+      return c.json({ received: true });
+    }
+    let subscriptionId: string | null = null;
+    let customer: string | null = null;
+    let userId: string | null = null;
+    if (SUB_EVENTS.has(event.type)) {
+      subscriptionId = String(o.id);
+      customer = String(o.customer);
+      userId = (o.metadata as Record<string, string> | undefined)?.user_id ?? null;
+    } else if (event.type === "checkout.session.completed") {
+      subscriptionId = typeof o.subscription === "string" ? o.subscription : null;
+      customer = String(o.customer);
+      userId = typeof o.client_reference_id === "string" ? o.client_reference_id : null;
+    } else if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+      const parent = o.parent as { subscription_details?: { subscription?: string } } | undefined;
+      subscriptionId = parent?.subscription_details?.subscription ?? null;
+      customer = String(o.customer);
+    }
+    if (!subscriptionId) return c.json({ received: true });
+    // Trust our own customer → account link over metadata; metadata is only a fallback for the first event.
+    const byCustomer = customer ? await billingByCustomer(env.DB, customer) : null;
+    const account = byCustomer?.user_id ?? userId;
+    if (!account || !(await env.DB.prepare("SELECT 1 AS ok FROM users WHERE id = ?").bind(account).first())) {
+      console.warn(JSON.stringify({ event: "billing_unknown_account", type: event.type }));
+      return c.json({ received: true });
+    }
+    await syncSubscription(env, account, subscriptionId, now);
+    return c.json({ received: true });
+  } catch (err) {
+    // Forget the event so Stripe's retry is processed.
+    await env.DB.prepare("DELETE FROM stripe_events WHERE id = ?").bind(event.id).run();
+    console.error(JSON.stringify({ event: "billing_webhook_failed", type: event.type, error: String(err).slice(0, 200) }));
+    return c.json({ error: "retry" }, 500);
+  }
+}

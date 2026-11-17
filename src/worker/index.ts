@@ -13,7 +13,7 @@ import { slots } from "./routes/slots";
 import { services } from "./routes/services";
 import { google, googleCallback, googleConfirm } from "./routes/google";
 import { webhook } from "./routes/webhook";
-import { billing } from "./routes/billing";
+import { billing, billingWebhook } from "./routes/billing";
 import { site } from "./site/routes";
 import { runWebhookJobs } from "./webhooks/outbox";
 import { runDueJobs } from "./email/outbox";
@@ -43,6 +43,8 @@ app.route("/api/public", publicRoutes);
 // Google's sign-in tab lands here; no session (see routes/google.ts).
 app.get("/api/google/callback", googleCallback);
 app.post("/api/google/confirm", googleConfirm);
+// Stripe calls this; no session, the signature is the only way in (see routes/billing.ts).
+app.post("/api/billing/webhook", billingWebhook);
 
 function mountApi(r: Hono<AppEnv>) {
   r.route("/calendar", calendar);
