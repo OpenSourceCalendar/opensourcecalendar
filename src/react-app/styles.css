@@ -1065,8 +1065,8 @@ textarea.input {
   border-radius: 4px;
 }
 
-/* ---------- Bold look: customer pages and the Branding preview ----------
-   Owner screens share the classes above but keep their quieter look. */
+/* ---------- Classic look (the default page style): customer pages and the Branding preview ----------
+   Owner screens share the classes above but keep their quieter look. Other styles override this below. */
 
 :is(.page, .phone) {
   font-family: "Plus Jakarta Sans Variable", var(--font);
@@ -1134,6 +1134,264 @@ textarea.input {
   position: relative;
   padding: 16px 22px;
   padding-bottom: max(16px, calc(env(safe-area-inset-bottom) + 8px));
+}
+
+/* ---------- Page styles ----------
+   data-style on .page (customer pages) and .phone (the Branding preview). Classic is the rules above.
+   Derived colors are re-mixed here so they follow each style's surfaces and the preview's own brand. */
+
+:is(.page, .phone)[data-style] {
+  --bg: color-mix(in oklab, var(--brand) 3%, var(--bg-base, #f3f3f1));
+  --sunken: color-mix(in oklab, var(--brand) 2%, var(--sunken-base, #f5f5f3));
+  --brand-wash: color-mix(in oklab, var(--brand) 9%, var(--surface));
+  --brand-line: color-mix(in oklab, var(--brand) 38%, var(--surface));
+  color: var(--text);
+}
+.page {
+  background: var(--bg);
+}
+
+/* Clean: white and minimal; the brand only on choices and buttons. */
+:is(.page, .phone)[data-style="clean"] {
+  --surface: #ffffff;
+  --bg-base: #f6f7f9;
+  --sunken-base: #f7f8fa;
+  --text: #111318;
+  --muted: #5d6370;
+  --line: #ebedf0;
+  --line-strong: #d9dce1;
+  font-family: "Inter Variable", var(--font);
+}
+[data-style="clean"] .band {
+  --on-brand: var(--text);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 20px;
+}
+[data-style="clean"] .band.has-photo::before {
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
+}
+[data-style="clean"] .band .title {
+  font-size: 26px;
+  font-weight: 700;
+}
+[data-style="clean"] .steps-bar span {
+  background: var(--brand);
+}
+[data-style="clean"] .band + .content {
+  margin-top: 0;
+  border-radius: 0;
+}
+[data-style="clean"] .btn {
+  border-radius: 8px;
+  font-weight: 600;
+}
+[data-style="clean"] .service {
+  border-radius: 10px;
+  border-width: 1px;
+}
+[data-style="clean"] .cal-day {
+  border-radius: 6px;
+}
+[data-style="clean"] .cal-day[aria-pressed="true"] {
+  box-shadow: none;
+}
+[data-style="clean"] .time {
+  border-radius: 8px;
+  border-width: 1px;
+}
+[data-style="clean"] :is(.summary, .appt) {
+  border-radius: 10px;
+}
+[data-style="clean"] .action-bar-inner::before {
+  inset: 0;
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: 0 -1px 0 var(--line);
+  backdrop-filter: none;
+}
+
+/* Soft: tinted, very round, friendly type. */
+:is(.page, .phone)[data-style="soft"] {
+  --surface: #ffffff;
+  --bg-base: #fbf8f4;
+  --bg: color-mix(in oklab, var(--brand) 10%, var(--bg-base));
+  --text: #1f2430;
+  --muted: #586070;
+  font-family: "Nunito Variable", var(--font);
+}
+[data-style="soft"] .band {
+  --on-brand: var(--text);
+  background: var(--brand-wash);
+}
+[data-style="soft"] .band.has-photo::before {
+  background: color-mix(in oklab, var(--brand-wash) 88%, transparent);
+}
+[data-style="soft"] .band .title {
+  color: var(--brand-ink);
+}
+[data-style="soft"] .steps-bar span {
+  background: var(--brand);
+}
+[data-style="soft"] .tile {
+  border-radius: 999px;
+}
+[data-style="soft"] .band + .content {
+  border-radius: 32px 32px 0 0;
+}
+[data-style="soft"] .btn {
+  border-radius: 999px;
+  font-weight: 800;
+}
+[data-style="soft"] .service {
+  border-radius: 24px;
+  border-width: 0;
+  background: var(--brand-wash);
+}
+[data-style="soft"] .service[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--brand);
+}
+[data-style="soft"] .cal-day {
+  border-radius: 999px;
+}
+[data-style="soft"] .time {
+  border: 0;
+  background: var(--brand-wash);
+  color: var(--brand-ink);
+  font-weight: 800;
+}
+[data-style="soft"] .time[aria-pressed="true"] {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+[data-style="soft"] :is(.summary, .appt) {
+  border-radius: 24px;
+}
+
+/* Bold: the whole page in the brand color, white cards with black outlines, big type. */
+:is(.page, .phone)[data-style="bold"] {
+  --edge: #111111;
+  --text: #111111;
+  --line-strong: #111111;
+  font-family: "Space Grotesk Variable", var(--font);
+}
+.page[data-style="bold"],
+[data-style="bold"] .sheet,
+.phone[data-style="bold"] {
+  background: var(--brand);
+}
+[data-style="bold"] .band .title {
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+[data-style="bold"] .band-name {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 15px;
+}
+[data-style="bold"] .tile {
+  border-radius: 4px;
+}
+[data-style="bold"] .band + .content {
+  margin: 0 12px;
+  border: 2px solid var(--edge);
+  border-radius: 4px;
+}
+[data-style="bold"] .btn {
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+[data-style="bold"] .btn-primary:not(:disabled) {
+  background: var(--edge);
+  color: #ffffff;
+}
+[data-style="bold"] .btn-primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--edge) 82%, #ffffff);
+}
+[data-style="bold"] .service {
+  border-radius: 4px;
+  border-color: var(--edge);
+}
+[data-style="bold"] .cal-day {
+  border-radius: 2px;
+}
+[data-style="bold"] .cal-day[aria-pressed="true"] {
+  background: var(--edge);
+  color: #ffffff;
+  box-shadow: none;
+}
+[data-style="bold"] .time {
+  border-radius: 2px;
+  border-color: var(--edge);
+}
+[data-style="bold"] :is(.summary, .appt) {
+  border-radius: 4px;
+  border: 2px solid var(--edge);
+}
+[data-style="bold"] .action-bar-inner::before {
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--edge);
+}
+[data-style="bold"] .powered,
+[data-style="bold"] .powered a {
+  color: var(--on-brand);
+}
+
+/* Midnight: dark. theme.ts lightens the brand for this style (text and fills alike). */
+:is(.page, .phone)[data-style="midnight"] {
+  --on-accent: var(--on-brand); /* the real text-on-brand, before .band overrides --on-brand */
+  --surface: #161a20;
+  --bg-base: #0d0f13;
+  --bg: var(--bg-base);
+  --sunken-base: #1b1f26;
+  --text: #eef0f3;
+  --muted: #9aa1ad;
+  --faint: #4a515d;
+  --line: #252a33;
+  --line-strong: #2f3540;
+  --danger: #f97066;
+  --danger-wash: #2a1513;
+  --ok: #4ade80;
+  --ok-wash: #10241a;
+  --warn: #fbbf24;
+  --warn-wash: #2a2010;
+  color-scheme: dark;
+}
+[data-style="midnight"] .band {
+  --on-brand: var(--text);
+  background: var(--bg);
+}
+[data-style="midnight"] .band.has-photo::before {
+  background: color-mix(in oklab, var(--bg) 85%, transparent);
+}
+[data-style="midnight"] .steps-bar span {
+  background: var(--brand);
+}
+[data-style="midnight"] .tile:not(.tile-logo) {
+  background: var(--brand);
+  color: var(--on-accent);
+  box-shadow: none;
+}
+[data-style="midnight"] .band-chip {
+  background: var(--sunken);
+  border-color: var(--line-strong);
+}
+[data-style="midnight"] .btn-danger {
+  color: #0d0f13; /* white on the light red fails contrast */
+}
+[data-style="midnight"] .action-bar-inner::before {
+  background: color-mix(in oklab, var(--sunken) 94%, transparent);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
+/* Phone overscroll and the area around the sheet on wide screens. */
+body:has(.page[data-style="midnight"]) {
+  background: #0d0f13;
+}
+body:has(.page[data-style="bold"]) {
+  background: var(--brand);
 }
 
 @media (prefers-reduced-motion: reduce) {
