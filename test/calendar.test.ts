@@ -44,6 +44,19 @@ describe("calendar", () => {
     expect(after.branding.business_name).toBe("Acme Fence");
   });
 
+  it("saves a page style, defaults to classic and rejects unknown styles", async () => {
+    const owner = await newOwner();
+    const fresh = (await (await call("/api/v1/calendar", { who: owner })).json()) as { branding: { style: string } };
+    expect(fresh.branding.style).toBe("classic");
+
+    const ok = await call("/api/v1/calendar", { method: "PATCH", who: owner, json: { branding: { style: "midnight" } } });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { branding: { style: string } }).branding.style).toBe("midnight");
+
+    const bad = await call("/api/v1/calendar", { method: "PATCH", who: owner, json: { branding: { style: "neon" } } });
+    expect(bad.status).toBe(400);
+  });
+
   it("returns 404 before a calendar exists and 409 on a second create", async () => {
     const key = await createApp();
     const who = { key, user: `u-${uniq()}` };

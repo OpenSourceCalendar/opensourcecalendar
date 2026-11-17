@@ -18,11 +18,15 @@ export const RulesSchema = z.object({
   powered_by: z.boolean().default(true),
 });
 
+/** The customer pages' look. Every plan gets all of them; the brand color is a separate choice. */
+export const PAGE_STYLES = ["classic", "clean", "soft", "bold", "midnight"] as const;
+
 export const BrandingSchema = z.object({
   business_name: z.string().max(100).default(""),
   phone: z.string().max(40).default(""),
   tagline: z.string().max(200).default(""),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#2d6a4f"),
+  style: z.enum(PAGE_STYLES).default("classic"),
   logo_key: z.string().max(200).nullable().default(null),
   hero_key: z.string().max(200).nullable().default(null),
 });

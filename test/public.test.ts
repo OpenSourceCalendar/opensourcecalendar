@@ -20,6 +20,17 @@ const customerIdOf = async (owner: { key: string; user: string }, apptId: string
 const bookPublic = (slug: string, json: Record<string, unknown>) => call(`/api/public/${slug}/book`, { method: "POST", json });
 
 describe("public calendar", () => {
+  it("gives customers the page style on the booking and manage pages", async () => {
+    const { owner, serviceId, slots } = await setup();
+    await call("/api/v1/calendar", { method: "PATCH", who: owner, json: { branding: { style: "soft" } } });
+    const cal = (await (await call(`/api/public/${owner.slug}`)).json()) as { branding: { style: string } };
+    expect(cal.branding.style).toBe("soft");
+
+    const booked = (await (await bookPublic(owner.slug, { service_id: serviceId, start: slots[0], first_name: "Ann", phone: "5035550702" })).json()) as Booked;
+    const view = (await (await call(`/api/public/manage/${booked.manage_token}`)).json()) as { business: { style: string } };
+    expect(view.business.style).toBe("soft");
+  });
+
   it("shows branding and only visible services", async () => {
     const { owner, serviceId } = await setup();
     const res = await call(`/api/public/${owner.slug}`);
