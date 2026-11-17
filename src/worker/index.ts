@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { adminLogin, createAdminSession, requireApp, requireSession, setup } from "./auth";
+import { accountInfo, adminLogin, createAdminSession, requireApp, requireSession, setup } from "./auth";
 import { appointments } from "./routes/appointments";
 import { availability } from "./routes/availability";
 import { customers } from "./routes/customers";
@@ -64,6 +64,7 @@ app.route("/api/v1", v1);
 app.route("/api/admin", adminLogin); // /api/admin/login, no session needed
 const admin = new Hono<AppEnv>();
 admin.use("*", requireSession);
+admin.get("/account", accountInfo);
 mountApi(admin);
 app.route("/api/admin", admin);
 

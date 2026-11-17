@@ -12,7 +12,7 @@ function envWith(extra: Record<string, unknown> = {}) {
   const env = {
     ...testEnv, SIGNUP: "invite", PUBLIC_URL: BASE, EMAIL_FROM: "hello@example.test",
     EMAIL: { send: vi.fn(async (m: Sent) => void sent.push(m)) }, ...extra,
-  } as typeof testEnv;
+  } as unknown as typeof testEnv;
   return { env, sent };
 }
 

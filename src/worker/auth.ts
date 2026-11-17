@@ -74,6 +74,25 @@ export const requireCalendar = createMiddleware<AppEnv>(async (c, next) => {
 });
 
 export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+export const HOSTED_APP = "app_hosted";
+export const HOSTED_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** A 30-day owner session for a hosted account. Creates the built-in hosted app row on first use. */
+export async function hostedSession(env: AppEnv["Bindings"], userId: string, now: number) {
+  // Its key hash can never match a real key, like the standalone app's.
+  await env.DB.prepare("INSERT OR IGNORE INTO apps (id, name, api_key_hash, created_at) VALUES (?, 'Hosted', ?, ?)")
+    .bind(HOSTED_APP, `none:${HOSTED_APP}`, now).run();
+  const token = await signSession(requireSessionSecret(env.SESSION_SECRET), { a: HOSTED_APP, u: userId }, now, HOSTED_SESSION_TTL_MS);
+  return { token, expires_at: new Date(now + HOSTED_SESSION_TTL_MS).toISOString() };
+}
+
+/** GET /api/admin/account: the hosted account's email; 404 for host-app and password sessions. */
+export async function accountInfo(c: Context<AppEnv>) {
+  if (c.var.app.id !== HOSTED_APP) return c.json({ error: "not_found" }, 404);
+  const row = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?").bind(c.var.userId).first<{ email: string }>();
+  return row ? c.json({ email: row.email }) : c.json({ error: "not_found" }, 404);
+}
 const STANDALONE_APP = "app_standalone";
 const STANDALONE_USER = "owner";
 
@@ -90,6 +109,10 @@ export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   if (!s) return c.json({ error: "unauthorized" }, 401);
   const app = await c.env.DB.prepare("SELECT id, name FROM apps WHERE id = ?").bind(s.a).first<AppRow>();
   if (!app) return c.json({ error: "unauthorized" }, 401);
+  // A deleted hosted account is signed out at once, not when its 30-day token runs out.
+  if (s.a === HOSTED_APP && !(await c.env.DB.prepare("SELECT 1 AS ok FROM users WHERE id = ?").bind(s.u).first())) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
   c.set("app", app);
   c.set("userId", s.u);
   await next();
