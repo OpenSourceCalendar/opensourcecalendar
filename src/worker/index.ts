@@ -8,6 +8,7 @@ import { images } from "./routes/images";
 import { publicRoutes } from "./routes/public";
 import { reminders } from "./routes/reminders";
 import { calendar } from "./routes/calendar";
+import { accounts } from "./routes/accounts";
 import { slots } from "./routes/slots";
 import { services } from "./routes/services";
 import { google, googleCallback, googleConfirm } from "./routes/google";
@@ -34,6 +35,7 @@ app.get("/health", (c) => c.json({ ok: true }));
 // Home, privacy and terms pages, and the waitlist form (site/).
 app.route("/", site);
 app.route("/api/setup", setup);
+app.route("/api/account", accounts);
 
 app.route("/api/public", publicRoutes);
 // Google's sign-in tab lands here; no session (see routes/google.ts).
