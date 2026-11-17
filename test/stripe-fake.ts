@@ -56,7 +56,8 @@ export class FakeStripe {
     const ok = (v: unknown) => new Response(JSON.stringify(v), { status: 200 });
     const p = url.pathname;
     if (method === "POST" && p === "/v1/customers") {
-      const c = { id: `cus_${++this.n}`, email: body.get("email") ?? "", metadata: { user_id: body.get("metadata[user_id]") ?? "" } };
+      const c = { id: `cus_${uniq()}_${++this.n}`, // unique across tests: billing.stripe_customer_id is UNIQUE in the shared D1
+         email: body.get("email") ?? "", metadata: { user_id: body.get("metadata[user_id]") ?? "" } };
       this.customers.set(c.id, c);
       return ok(c);
     }
