@@ -65,3 +65,6 @@ TURNSTILE_SITE_KEY = ""
 #   TURNSTILE_SECRET  optional; when set, bookings must pass Cloudflare Turnstile.
 #                     Set it together with TURNSTILE_SITE_KEY: a secret without a site key
 #                     hides the widget, so every booking would fail.
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET  optional; hosted billing (opensourcecalendar.com's own service).
+#                  Leave unset on your own install: billing stays off and every calendar has every feature.
+# [vars] for billing: STRIPE_PRICE_PRO_MONTH, STRIPE_PRICE_PRO_YEAR, STRIPE_PRICE_WL_MONTH, STRIPE_PRICE_WL_YEAR, OPERATOR_EMAIL

@@ -1,6 +1,6 @@
 import { page, PRIVACY_EMAIL, SITE_NAME } from "./layout";
 
-export const PRIVACY_UPDATED = "November 16, 2026";
+export const PRIVACY_UPDATED = "November 17, 2026";
 
 // Keep this in step with what the code really stores. Checked against migrations 0001–0009,
 // routes/customers.ts (deletion), google/push.ts (event contents), google/busy.ts and email/outbox.ts (30-day job cleanup).
@@ -42,6 +42,9 @@ export function privacyPage(login?: string) {
 <h3>When you create an account</h3>
 <p>Your email address, the ID of your Google account if you sign in with Google (not your Google password or calendar), and when the account was created and last used. When you ask for a sign-in link, we keep a scrambled (hashed) form of your network address for up to 2 days, to stop sign-in emails being abused.</p>
 
+<h3>When a business pays for a plan</h3>
+<p>Payments are handled by Stripe, so card details go to Stripe and never to us; we never see or store card numbers. We store the Stripe customer and subscription IDs, the plan, its status and the relevant dates (such as when a trial or billing period ends).</p>
+
 <h3>Technical information</h3>
 <p>To keep the service working and safe, our hosting provider Cloudflare processes your IP address and basic browser details when you load a page, and keeps short-lived technical logs. The booking page uses Cloudflare Turnstile to check that a booking comes from a person, not a bot; Turnstile works without advertising cookies.</p>
 
@@ -52,6 +55,7 @@ export function privacyPage(login?: string) {
 <li>To let customers change or cancel their own booking from the private link in their email.</li>
 <li>To copy bookings into the business’s Google Calendar and block times it is busy, when the business turns that on.</li>
 <li>To send one email to waitlist members when hosted plans open.</li>
+<li>To send billing emails to the business’s owner, for example when the free plan’s booking limit is reached or a paid plan is ending.</li>
 <li>To keep the service secure, prevent abuse and fix problems.</li>
 </ul>
 <p>We do not sell personal information, share it for advertising, or use it to build marketing profiles. We do not send marketing emails to a business’s customers.</p>
@@ -68,6 +72,7 @@ export function privacyPage(login?: string) {
 <h2>Who else handles the information</h2>
 <ul>
 <li><strong>Cloudflare</strong> hosts the service, stores its data, sends its emails and runs the Turnstile bot check.</li>
+<li><strong>Stripe</strong> processes payments for paid plans. See <a href="https://stripe.com/privacy">Stripe’s privacy policy</a>.</li>
 <li><strong>Google</strong>, only when a business connects Google Calendar or signs in with Google, as described above.</li>
 <li><strong>The business you booked with</strong>, which can see and manage your booking. A business can also connect its own software (for example a customer database) to receive booking details.</li>
 </ul>

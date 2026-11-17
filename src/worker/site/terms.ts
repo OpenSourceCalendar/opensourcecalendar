@@ -1,6 +1,6 @@
 import { GITHUB_URL, page, SITE_NAME, SUPPORT_EMAIL } from "./layout";
 
-export const TERMS_UPDATED = "November 16, 2026";
+export const TERMS_UPDATED = "November 17, 2026";
 const TERMS_EMAIL = "terms@opensourcecalendar.com";
 
 export function termsPage(login?: string) {
@@ -40,7 +40,36 @@ export function termsPage(login?: string) {
 <p>You keep ownership of what you put into the service: your business details, images and customer records. You give us permission to store and process it only as needed to run the service for you. You can delete it, or ask us for a copy, at any time. If we close your account we will give you a reasonable chance to export it first, unless the law or a serious breach of these terms prevents it.</p>
 
 <h2>Plans and payments</h2>
-<p>When hosted plans launch, prices will be shown on our home page and at checkout. Paid plans will renew automatically until cancelled, and you can cancel at any time; the plan stays active until the end of the period you paid for. Paid plans will start with a 14-day free trial that needs a card. If you cancel before the trial ends you won’t be charged and your account moves to the Free plan; otherwise the paid plan starts when the trial ends. The Free plan needs no card. We will give notice before changing the price of a plan you are on.</p>
+<h3>Plans and prices</h3>
+<ul>
+<li><strong>Free</strong>, $0: one calendar, email confirmations only (no reminders), no Google Calendar sync, and a “Powered by” footer on the booking page. Each month, the first 10 bookings made through the booking page get their emails. After that, bookings still work but no emails go out until the 1st of the next month.</li>
+<li><strong>Pro</strong>: $10 a month or $100 a year.</li>
+<li><strong>White-label</strong>: $50 a month or $500 a year.</li>
+</ul>
+<p>Prices exclude any sales tax that applies, which is added at checkout where it is due. The Free plan needs no card.</p>
+
+<h3>Free trial</h3>
+<p>Paid plans start with a 14-day free trial that needs a card. If you do not cancel before the trial ends, it becomes a paid subscription and your card is charged. Each account gets one trial.</p>
+
+<h3>Renewal and cancelling</h3>
+<p>Paid plans renew automatically until cancelled. You can cancel at any time in the billing portal. Your plan then runs to the end of the period you have already paid for, and after that your account moves to Free. Nothing is deleted.</p>
+
+<h3>Refunds</h3>
+<ul>
+<li>Monthly plans are not refunded.</li>
+<li>Yearly plans get a full refund if you ask within 14 days of a payment, either the first payment or a renewal. After that there is no refund, and the plan runs to the end of the year.</li>
+<li>We may give refunds in other cases at our discretion.</li>
+</ul>
+<p>To ask for a refund, email <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p>
+
+<h3>White-label grace period</h3>
+<p>When a paid White-label plan ends, your clients’ calendars keep working for a 30-day grace period at no charge.</p>
+
+<h3>Failed payments</h3>
+<p>If a payment fails, we retry for about two weeks. If every attempt fails, the plan ends and your account moves to Free.</p>
+
+<h3>Price changes</h3>
+<p>Prices may change. We will give you at least 30 days’ notice by email before a change applies to you.</p>
 
 <h2>Third-party services</h2>
 <p>The service relies on others, including Cloudflare for hosting and email, and Google if you connect Google Calendar. Their own terms also apply to your use of them, and we are not responsible for their services.</p>
