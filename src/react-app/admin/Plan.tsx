@@ -102,7 +102,13 @@ export function Plan({ billing, reload }: { billing: Extract<BillingInfo, { enab
             {NAME[billing.plan]}
             {billing.interval ? ` · ${billing.interval === "year" ? "Yearly" : "Monthly"}` : ""}
           </h2>
-          {billing.status === "trialing" && billing.trial_end && <p>Free trial until {day(billing.trial_end)}.</p>}
+          {billing.status === "trialing" && billing.trial_end && (
+            <p>
+              {billing.cancel_at_period_end
+                ? `Trial ends ${day(billing.trial_end)}. You won't be charged.`
+                : `Free trial until ${day(billing.trial_end)}.`}
+            </p>
+          )}
           {(billing.status === "active" || billing.status === "past_due") && billing.current_period_end && (
             <p>
               {billing.cancel_at_period_end ? "Ends" : "Renews"} {day(billing.current_period_end)}.
