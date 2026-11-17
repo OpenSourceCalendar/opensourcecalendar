@@ -16,6 +16,7 @@ import { checkGoogleWindow } from "../google/busy";
 import { googlePushJob } from "../google/push";
 import { webhookJob } from "../webhooks/job";
 import { entitlements } from "../billing/entitlements";
+import { markIfOverLimit } from "../billing/limit";
 import { parseBranding, parseNotifications, parseRules } from "../settings";
 import { buildIcs } from "../booking/ics";
 import { findSlots } from "../slots/find-slots";
@@ -366,6 +367,9 @@ publicRoutes.post("/:slug/book", async (c) => {
       .bind(newId("con"), customer.id, res.appointment.id, b.text_consent.wording, contact.phone, now)
       .run();
   }
+  // Free plan: over 10 booking-page bookings this month, this one sends no email. Never fails the booking.
+  await markIfOverLimit(c.env, cal, res.appointment.id, now).catch((err) =>
+    console.error(JSON.stringify({ event: "free_limit_failed", error: String(err).slice(0, 200) })));
   await queueEmails(c, res.appointment.id, async () => {
     // Too many bookings for one address in a day: the booking stands, but that address gets no email for it.
     const limit = await addressUnderLimit(db, cal.id, contact.email, now);
