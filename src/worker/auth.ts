@@ -2,6 +2,8 @@ import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { newId, randomToken, sha256Hex } from "./lib/ids";
 import { signSession, verifySession } from "./lib/session";
+import { publicBase, signupOn } from "./accounts/config";
+import { createInvite } from "./accounts/store";
 import type { AppEnv, AppRow, CalendarRow } from "./types";
 
 const encoder = new TextEncoder();
@@ -29,6 +31,18 @@ setup.post("/apps", async (c) => {
     .bind(id, name, await sha256Hex(apiKey), Date.now())
     .run();
   return c.json({ app_id: id, api_key: apiKey }, 201);
+});
+
+/** An invite link for hosted sign-up (one use, 14 days). 404 unless sign-up is on. */
+setup.post("/invites", async (c) => {
+  const token = c.env.SETUP_TOKEN;
+  if (!token || !signupOn(c.env)) return c.notFound();
+  const given = (c.req.header("Authorization") ?? "").replace(/^Bearer /, "");
+  if (!(await sameSecret(given, token))) return c.json({ error: "unauthorized" }, 401);
+  const body = (await c.req.json().catch(() => null)) as { note?: unknown } | null;
+  const note = typeof body?.note === "string" ? body.note.trim().slice(0, 200) : "";
+  const invite = await createInvite(c.env.DB, note, Date.now());
+  return c.json({ url: `${publicBase(c.env)}/signup?invite=${invite.token}`, expires_at: new Date(invite.expiresAt).toISOString() }, 201);
 });
 
 /** Checks the app API key and reads X-Calendar-User. */
