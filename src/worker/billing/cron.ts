@@ -24,9 +24,13 @@ export async function runBillingCron(env: Bindings, now: number): Promise<void> 
     .all<{ user_id: string; grace_until: number; grace_checkin_sent: number; grace_reminder_sent: number }>();
   for (const g of results) {
     if (g.grace_until <= now) {
-      // Grace is over (entitlements already say Free); tidy the row and run the drop-to-Free side effects once.
-      const ended = await db.prepare("UPDATE billing SET grace_until = NULL, updated_at = ? WHERE user_id = ? AND grace_until = ?").bind(now, g.user_id, g.grace_until).run();
-      if (ended.meta.changes) await droppedToFree(env, g.user_id);
+      // Grace is over (entitlements already say Free); tidy the row and run the drop-to-Free side effects, in one
+      // batch. The side effects come first and only while grace_until is still this value, so they run once.
+      const still = "EXISTS (SELECT 1 FROM billing WHERE user_id = ? AND grace_until = ?)";
+      await db.batch([
+        ...droppedToFree(db, await accountCalendars(db, g.user_id), still, g.user_id, g.grace_until),
+        db.prepare("UPDATE billing SET grace_until = NULL, updated_at = ? WHERE user_id = ? AND grace_until = ?").bind(now, g.user_id, g.grace_until),
+      ]);
       continue;
     }
     // Each email is claimed by flipping its flag first, so overlapping cron runs send it once.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { applySubscription, syncSubscription } from "../src/worker/billing/sync";
 import { getBilling } from "../src/worker/billing/store";
+import { isPaid } from "../src/worker/billing/entitlements";
 import { billingEnv, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
 import { connectForTest } from "./google-fake";
 
@@ -117,5 +118,72 @@ describe("syncSubscription", () => {
     const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "active" });
     await applySubscription(env, a.userId, sub, Date.now());
     expect(await getBilling(env.DB, a.userId)).toMatchObject({ grace_until: null, grace_checkin_sent: 0, grace_subscription_id: "sub_old", status: "active" });
+  });
+
+  it("an unknown price still saves the status: a cancelled subscription on an old price ends paid access", async () => {
+    const { env, fake, a } = await setup();
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_pro_month", status: "active" });
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    sub.items.data[0].price.id = "price_retired";
+    sub.status = "canceled";
+    sub.cancel_at_period_end = true;
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    const row = (await getBilling(env.DB, a.userId))!;
+    expect(row).toMatchObject({ status: "canceled", plan: "pro", interval: "month", cancel_at_period_end: 1 });
+    expect(isPaid(row, Date.now())).toBe(false);
+  });
+
+  it("an unknown price on a Free account stays Free", async () => {
+    const { env, fake, a } = await setup();
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_retired", status: "active" });
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    const row = (await getBilling(env.DB, a.userId))!;
+    expect(row).toMatchObject({ stripe_subscription_id: sub.id, status: "active", plan: "free" });
+    expect(isPaid(row, Date.now())).toBe(false);
+  });
+
+  it("becoming paid also brings bookings already in Google up to date (cancelled while Free)", async () => {
+    const { env, fake, a } = await setup();
+    await connectForTest(a.calendarId);
+    const svc = `svc_${crypto.randomUUID()}`;
+    const cus = `cus_${crypto.randomUUID()}`;
+    const apt = `apt_${crypto.randomUUID()}`;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO services (id, calendar_id, name, duration_min, color, location_type, created_at) VALUES (?, ?, 'Call', 30, '#2d6a4f', 'business', 0)").bind(svc, a.calendarId),
+      env.DB.prepare("INSERT INTO customers (id, calendar_id, first_name, email, created_at) VALUES (?, ?, 'Ann', 'ann@example.test', 0)").bind(cus, a.calendarId),
+      env.DB.prepare(`INSERT INTO appointments (id, calendar_id, service_id, customer_id, start_at, end_at, status, source, manage_token_hash, created_at, updated_at, google_event_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'cancelled', 'booking_page', ?, 0, 0, 'ev1')`).bind(apt, a.calendarId, svc, cus, Date.now() + DAY, Date.now() + DAY + 1_800_000, apt),
+    ]);
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_pro_month", status: "active" });
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    const job = await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE calendar_id = ? AND kind = 'google.push' AND payload = ?")
+      .bind(a.calendarId, JSON.stringify({ appointment_id: apt })).first<{ n: number }>();
+    expect(job!.n).toBe(1);
+  });
+
+  it("a late event for an older ended subscription doesn't touch the newer one's grace", async () => {
+    const { env, fake, a } = await setup();
+    const now = Date.now();
+    const older = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "canceled", created: Math.floor(now / 1000) - 90 * 86400 });
+    const newer = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "canceled", created: Math.floor(now / 1000) - 10 * 86400 });
+    fake.invoices.push({ subscription: older.id, amount_paid: 5000, status: "paid" });
+    const grace = now + 10 * DAY;
+    await setBilling(env, a.userId, { stripe_subscription_id: newer.id, plan: "white_label", interval: "month", status: "canceled", grace_until: grace, grace_subscription_id: newer.id, grace_checkin_sent: 1 });
+    await syncSubscription(env, a.userId, older.id, now);
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ stripe_subscription_id: newer.id, grace_until: grace, grace_subscription_id: newer.id, grace_checkin_sent: 1 });
+  });
+
+  it("grace is granted at most once in one event (stored live one ended, incoming one ended too)", async () => {
+    const { env, fake, a } = await setup();
+    const now = Date.now();
+    const first = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "active", created: Math.floor(now / 1000) - 90 * 86400 });
+    const second = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "canceled", created: Math.floor(now / 1000) - 10 * 86400 });
+    fake.invoices.push({ subscription: first.id, amount_paid: 5000, status: "paid" }, { subscription: second.id, amount_paid: 5000, status: "paid" });
+    await syncSubscription(env, a.userId, first.id, now);
+    first.status = "canceled"; // Stripe knows; our row still says active
+    await syncSubscription(env, a.userId, second.id, now);
+    const row = (await getBilling(env.DB, a.userId))!;
+    expect(row.grace_subscription_id).toBe(first.id);
+    expect(row.grace_until).toBe(now + 30 * DAY);
   });
 });

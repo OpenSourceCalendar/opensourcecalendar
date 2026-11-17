@@ -1,6 +1,6 @@
 // Turns Stripe's current view of a subscription into our billing row. Called by the webhook and the daily
 // reconcile; always with a subscription fetched from Stripe, never an event's copy (events can arrive out of order).
-import type { Bindings } from "../types";
+import type { Bindings, CalendarRow } from "../types";
 import { planForPrice } from "./config";
 import { sendOperatorEmail } from "./emails";
 import { isPaid, LIVE_STATUSES } from "./entitlements";
@@ -27,23 +27,24 @@ async function hadRealPayment(env: Bindings, subscriptionId: string): Promise<bo
 }
 
 /**
- * Drop-to-Free side effects. Busy times from Google would go stale while sync is paused, so they're removed, and
- * busy_hash is cleared so the first sync after an upgrade rewrites them (syncBusy skips the write when the hash is unchanged).
+ * Drop-to-Free side effects, as statements for the caller's batch (so they commit with the billing change or not at
+ * all). Busy times from Google would go stale while sync is paused, so they're removed, and busy_hash is cleared so
+ * the first sync after an upgrade rewrites them (syncBusy skips the write when the hash is unchanged). `onlyIf` is an
+ * extra SQL condition (with its bind values) checked when the batch runs.
  */
-async function droppedToFree(env: Bindings, userId: string): Promise<void> {
-  const cals = await accountCalendars(env.DB, userId);
-  if (!cals.length) return;
-  await env.DB.batch(cals.flatMap((c) => [
-    env.DB.prepare("DELETE FROM google_busy WHERE calendar_id = ?").bind(c.id),
-    env.DB.prepare("UPDATE google_connections SET busy_hash = NULL WHERE calendar_id = ?").bind(c.id),
-  ]));
+export function droppedToFree(db: D1Database, cals: Pick<CalendarRow, "id">[], onlyIf = "1", ...binds: unknown[]): D1PreparedStatement[] {
+  return cals.flatMap((c) => [
+    db.prepare(`DELETE FROM google_busy WHERE calendar_id = ? AND ${onlyIf}`).bind(c.id, ...binds),
+    db.prepare(`UPDATE google_connections SET busy_hash = NULL WHERE calendar_id = ? AND ${onlyIf}`).bind(c.id, ...binds),
+  ]);
 }
 
-/** Free → paid: bookings made while Google was paused are pushed now (push jobs were closed as skipped:plan). */
-async function becamePaid(env: Bindings, userId: string, now: number): Promise<void> {
-  const cals = await accountCalendars(env.DB, userId);
-  if (cals.length) await env.DB.batch(cals.map((c) => googlePushMany(env.DB, c.id, now, { upcoming: true })));
-}
+/**
+ * Free → paid: bookings made while Google was paused are pushed now (push jobs were closed as skipped:plan), and
+ * events already in Google are brought up to date (cancellations and deletions made while Free).
+ */
+const becamePaid = (db: D1Database, cals: Pick<CalendarRow, "id">[], now: number): D1PreparedStatement[] =>
+  cals.flatMap((c) => [googlePushMany(db, c.id, now, { inGoogle: true }), googlePushMany(db, c.id, now, { upcoming: true })]);
 
 export async function applySubscription(env: Bindings, userId: string, sub: StripeSub, now: number): Promise<void> {
   const db = env.DB;
@@ -55,26 +56,34 @@ export async function applySubscription(env: Bindings, userId: string, sub: Stri
     return;
   }
   const incomingLive = LIVE_STATUSES.has(sub.status);
-  if (prev.stripe_subscription_id && prev.stripe_subscription_id !== sub.id && LIVE_STATUSES.has(prev.status)) {
+  let graceGiven = false;
+  if (prev.stripe_subscription_id && prev.stripe_subscription_id !== sub.id && (LIVE_STATUSES.has(prev.status) || !incomingLive)) {
     // Our copy may be stale (events arrive in any order): ask Stripe about the stored subscription first.
     const stored = await stripe<StripeSub>(env, "GET", `/v1/subscriptions/${encodeURIComponent(prev.stripe_subscription_id)}`);
-    if (LIVE_STATUSES.has(stored.status)) {
-      if (incomingLive) {
-        // Two genuinely live subscriptions (two checkouts at once). Keep the stored one; a person refunds the other.
-        await sendOperatorEmail(env, "Duplicate subscription", `Account ${userId} has a second live subscription ${sub.id} (kept ${prev.stripe_subscription_id}). Cancel and refund it in the Stripe Dashboard.`);
+    if (LIVE_STATUSES.has(prev.status)) {
+      if (LIVE_STATUSES.has(stored.status)) {
+        if (incomingLive) {
+          // Two genuinely live subscriptions (two checkouts at once). Keep the stored one; a person refunds the other.
+          await sendOperatorEmail(env, "Duplicate subscription", `Account ${userId} has a second live subscription ${sub.id} (kept ${prev.stripe_subscription_id}). Cancel and refund it in the Stripe Dashboard.`);
+        }
+        return; // an event for an older or extra subscription never overwrites the live one
       }
-      return; // an event for an older or extra subscription never overwrites the live one
+      await applySubscription(env, userId, stored, now); // record that the stored one ended, then carry on with this one
+      const after = (await getBilling(db, userId))!;
+      graceGiven = after.grace_subscription_id !== prev.grace_subscription_id; // one grace per event at most
+      prev = after;
     }
-    await applySubscription(env, userId, stored, now); // record that the stored one ended, then carry on with this one
-    prev = (await getBilling(db, userId))!;
+    // A late event for an older subscription that has also ended never overwrites the newer one.
+    if (!incomingLive && sub.created < stored.created) return;
   }
 
   const item = sub.items.data[0];
   const priced = item ? planForPrice(env, item.price.id) : null;
-  if (!priced) {
-    console.error(JSON.stringify({ event: "billing_unknown_price", subscription: sub.id }));
-    return;
-  }
+  if (!priced) console.error(JSON.stringify({ event: "billing_unknown_price", subscription: sub.id }));
+  // An unknown price (say, one retired since) keeps the plan we had; status and dates are still saved, so a cancelled
+  // subscription ends paid access. On Free that means staying Free.
+  const plan = priced?.plan ?? prev.plan;
+  const interval = priced ? priced.interval : prev.interval;
   const wasPaid = isPaid(prev, now);
   let graceUntil = prev.grace_until;
   let graceSub = prev.grace_subscription_id;
@@ -84,26 +93,27 @@ export async function applySubscription(env: Bindings, userId: string, sub: Stri
     graceUntil = null;
     checkin = 0;
     reminder = 0;
-  } else if (sub.status === "canceled" && priced.plan === "white_label" && graceSub !== sub.id && (await hadRealPayment(env, sub.id))) {
+  } else if (!graceGiven && sub.status === "canceled" && plan === "white_label" && graceSub !== sub.id && (await hadRealPayment(env, sub.id))) {
     graceUntil = now + GRACE_MS;
     graceSub = sub.id;
     checkin = 0;
     reminder = 0;
   }
 
-  await db.prepare(
-    `UPDATE billing SET stripe_customer_id = ?, stripe_subscription_id = ?, plan = ?, interval = ?, status = ?, current_period_end = ?,
-       cancel_at_period_end = ?, trial_used = MAX(trial_used, ?), trial_end = ?, grace_until = ?, grace_subscription_id = ?,
-       grace_checkin_sent = ?, grace_reminder_sent = ?, updated_at = ? WHERE user_id = ?`,
-  ).bind(
-    sub.customer, sub.id, priced.plan, priced.interval, sub.status, item.current_period_end * 1000,
-    sub.cancel_at_period_end ? 1 : 0, sub.trial_end ? 1 : 0, sub.trial_end ? sub.trial_end * 1000 : null,
-    graceUntil, graceSub, checkin, reminder, now, userId,
-  ).run();
-
-  const nowPaid = isPaid({ plan: priced.plan, status: sub.status, grace_until: graceUntil }, now);
-  if (wasPaid && !nowPaid) await droppedToFree(env, userId);
-  if (!wasPaid && nowPaid) await becamePaid(env, userId, now);
+  const nowPaid = isPaid({ plan, status: sub.status, grace_until: graceUntil }, now);
+  const cals = wasPaid !== nowPaid ? await accountCalendars(db, userId) : [];
+  // One batch (D1 runs it as a transaction): the plan change and its side effects land together, or a retry redoes both.
+  await db.batch([
+    db.prepare(
+      `UPDATE billing SET stripe_customer_id = ?, stripe_subscription_id = ?, plan = ?, interval = ?, status = ?, current_period_end = ?,
+         cancel_at_period_end = ?, trial_used = MAX(trial_used, ?), trial_end = ?, grace_until = ?, grace_subscription_id = ?,
+         grace_checkin_sent = ?, grace_reminder_sent = ?, updated_at = ? WHERE user_id = ?`,
+    ).bind(
+      sub.customer, sub.id, plan, interval, sub.status, item ? item.current_period_end * 1000 : prev.current_period_end,
+      sub.cancel_at_period_end ? 1 : 0, sub.trial_end ? 1 : 0, sub.trial_end ? sub.trial_end * 1000 : null,
+      graceUntil, graceSub, checkin, reminder, now, userId,
+    ),
+    ...(wasPaid && !nowPaid ? droppedToFree(db, cals) : []),
+    ...(!wasPaid && nowPaid ? becamePaid(db, cals, now) : []),
+  ]);
 }
-
-export { droppedToFree };
