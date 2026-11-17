@@ -5,6 +5,8 @@ export type Bindings = Env & { SETUP_TOKEN?: string; MANAGE_SECRET?: string; TUR
   PUBLIC_URL?: string;
   /** "on" shows the Open Source Calendar website (home, privacy, terms, waitlist). Off by default, so a self-hosted copy gets a plain front page. */
   MARKETING_SITE?: string;
+  /** "invite" turns on hosted sign-up and log-in (invite-only) when PUBLIC_URL is also set. Unset = off (self-hosted copies). */
+  SIGNUP?: string;
   /** Google OAuth client (Google Cloud → OAuth client ID, type "Web application"). Unset = Google sync off. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

@@ -46,6 +46,8 @@ run_worker_first = ["/api/*", "/health", "/", "/privacy", "/terms", "/robots.txt
 TURNSTILE_SITE_KEY = ""
 # Base for links in emails and Google events, and the webhook own-host check. Set it once you use your own domain.
 # PUBLIC_URL = "https://book.example.com"
+# Hosted sign-up and log-in (opensourcecalendar.com's own service). Leave unset on your own install.
+# SIGNUP = "invite"
 
 # Secrets (set with `npx wrangler secret put NAME`, never committed):
 #   MANAGE_SECRET  required; signs customers' manage links. Changing it breaks every existing link
