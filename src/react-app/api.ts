@@ -99,10 +99,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: { method?: string; json?: unknown }): Promise<T> {
+async function request<T>(path: string, init?: { method?: string; json?: unknown; base?: string }): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api/public${path}`, {
+    res = await fetch(`${init?.base ?? "/api/public"}${path}`, {
       method: init?.method ?? "GET",
       headers: init?.json !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: init?.json !== undefined ? JSON.stringify(init.json) : undefined,
@@ -180,3 +180,13 @@ export function errorText(e: unknown): string {
       return "Something went wrong. Please try again.";
   }
 }
+
+export interface AccountConfig { google: boolean; email: boolean; turnstile_site_key: string | null; public_url: string }
+const ACCOUNT = "/api/account";
+export const accountApi = {
+  config: () => request<AccountConfig>("/config", { base: ACCOUNT }),
+  invite: (token: string) => request<{ valid: boolean }>(`/invite/${enc(token)}`, { base: ACCOUNT }),
+  emailLink: (input: { email: string; invite?: string; turnstile_token?: string }) =>
+    request<{ sent: true }>("/email-link", { method: "POST", json: input, base: ACCOUNT }),
+  verify: (token: string) => request<{ token: string; expires_at: string; email: string }>("/email-link/verify", { method: "POST", json: { token }, base: ACCOUNT }),
+};

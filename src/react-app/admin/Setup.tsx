@@ -1,10 +1,17 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ApiError } from "../api";
 import { allZones, visitorZone, zoneOffset } from "../time";
-import { adminApi, type AdminCalendar } from "./api";
+import { adminApi, type AdminCalendar, type ServiceInput, type WeeklyDay } from "./api";
 import { cleanSlug, SLUG_HINT, SLUG_RE, useSlugCheck } from "./slug";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Hosted accounts start with a working booking page; the owner changes both later.
+const DEFAULT_WEEK: WeeklyDay[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, open: weekday >= 1 && weekday <= 5, start_min: 540, end_min: 1020, breaks: [] }));
+const FIRST_SERVICE: ServiceInput = {
+  name: "Consultation", description: "", duration_min: 30, price_cents: 0, color: "#4f46e5",
+  location_type: "phone", location_text: "", hidden: false, is_call_default: false,
+};
 
 const slugify = (name: string) =>
   name
@@ -28,6 +35,18 @@ export function Setup({ onCreated }: { onCreated: (calendar: AdminCalendar) => v
   const [takenOnSave, setTakenOnSave] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [hosted, setHosted] = useState(false);
+
+  useEffect(() => {
+    // Hosted accounts only: pre-fill the email; host-app and standalone first runs are unchanged.
+    adminApi.account().then(
+      (a) => {
+        setHosted(true);
+        setOwnerEmail((e) => e || a.email);
+      },
+      () => {},
+    );
+  }, []);
 
   // Built once: labelling ~400 zones on every keystroke is slow.
   const zones = useMemo(() => {
@@ -48,6 +67,8 @@ export function Setup({ onCreated }: { onCreated: (calendar: AdminCalendar) => v
       const named = await adminApi
         .updateCalendar({ branding: { business_name: name.trim() }, ...(email && { notifications: { owner_email: email } }) })
         .catch(() => created);
+      // A working booking page from the start. Failures don't block: the owner can add both later.
+      if (hosted) await Promise.allSettled([adminApi.saveWeekly(DEFAULT_WEEK), adminApi.createService(FIRST_SERVICE)]);
       onCreated(named);
     } catch (err) {
       const code = err instanceof ApiError ? err.error : "";

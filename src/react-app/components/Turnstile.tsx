@@ -31,7 +31,7 @@ function loadTurnstile(): Promise<TurnstileApi> {
 }
 
 /** Cloudflare Turnstile, rendered explicitly. Bump `resetKey` to get a fresh token. */
-export function Turnstile({ siteKey, onToken, resetKey }: { siteKey: string; onToken: (token: string | null) => void; resetKey: number }) {
+export function Turnstile({ siteKey, onToken, resetKey, action = "book" }: { siteKey: string; onToken: (token: string | null) => void; resetKey: number; action?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
   const cb = useRef(onToken);
@@ -44,7 +44,7 @@ export function Turnstile({ siteKey, onToken, resetKey }: { siteKey: string; onT
         if (!live || !box.current) return;
         widget.current = t.render(box.current, {
           sitekey: siteKey,
-          action: "book", // the server checks this
+          action, // the server checks this
           callback: (token: string) => cb.current(token),
           "expired-callback": () => cb.current(null),
           "error-callback": () => cb.current(null),
