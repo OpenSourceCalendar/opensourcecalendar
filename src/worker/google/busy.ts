@@ -134,8 +134,16 @@ export async function runGoogleSync(env: Bindings, now: number): Promise<number>
     tried++;
     await db.prepare("UPDATE google_connections SET last_attempt_at = ? WHERE calendar_id = ?").bind(now, conn.calendar_id).run();
     const cal = await db.prepare("SELECT * FROM calendars WHERE id = ?").bind(conn.calendar_id).first<CalendarRow>();
-    // Free plan: sync is paused (not an error), so the connection is kept and picks up again once paid.
-    if (!cal || !(await entitlements(env, cal, now)).google) continue;
+    if (!cal) continue;
+    // Free plan: sync is paused (not an error), so the connection is kept and picks up again once paid. Stored busy
+    // times would go stale, so they're cleared (cheap, and safe to repeat), and the hash so the first paid sync rewrites them.
+    if (!(await entitlements(env, cal, now)).google) {
+      await db.batch([
+        db.prepare("DELETE FROM google_busy WHERE calendar_id = ?").bind(cal.id),
+        db.prepare("UPDATE google_connections SET busy_hash = NULL WHERE calendar_id = ?").bind(cal.id),
+      ]);
+      continue;
+    }
     try {
       await syncBusy(env, cfg, conn, cal, now);
     } catch (err) {

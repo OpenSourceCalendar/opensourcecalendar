@@ -38,4 +38,34 @@ describe("Google on Free", () => {
     const sync = await app.request("https://book.example.test/api/admin/google/sync", { method: "POST", headers: { Authorization: `Session ${a.token}` } }, env);
     expect(sync.status).toBe(402);
   });
+  it("the cron sync clears a Free calendar's stored busy times and hash", async () => {
+    const env = billingEnv();
+    const fake = new FakeGoogle();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const a = await hostedAccount(env);
+    await connectForTest(a.calendarId);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE google_connections SET busy_hash = 'h', last_attempt_at = 0 WHERE calendar_id = ?").bind(a.calendarId),
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'stale', 1, 2)").bind(a.calendarId),
+    ]);
+    await runGoogleSync(env, Date.now());
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM google_busy WHERE calendar_id = ?").bind(a.calendarId).first<{ n: number }>())!.n).toBe(0);
+    expect((await env.DB.prepare("SELECT busy_hash FROM google_connections WHERE calendar_id = ?").bind(a.calendarId).first<{ busy_hash: string | null }>())!.busy_hash).toBeNull();
+    expect(fake.googleCalls().length).toBe(0);
+  });
+  it("finishing Google's sign-in is refused on Free, and nothing is saved", async () => {
+    const env = billingEnv();
+    const fake = new FakeGoogle();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "pro", status: "active" });
+    const res = await app.request("https://book.example.test/api/admin/google/connect", { method: "POST", headers: { Authorization: `Session ${a.token}` } }, env);
+    const state = new URL(((await res.json()) as { url: string }).url).searchParams.get("state")!;
+    await setBilling(env, a.userId, { status: "canceled" }); // dropped to Free before pressing Connect
+    const confirm = await app.request("https://book.example.test/api/google/confirm", {
+      method: "POST", body: new URLSearchParams({ code: "good-code", state }), headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    }, env);
+    expect(confirm.status).toBe(402);
+    expect(await env.DB.prepare("SELECT 1 FROM google_connections WHERE calendar_id = ?").bind(a.calendarId).first()).toBeNull();
+  });
 });

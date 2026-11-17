@@ -259,6 +259,10 @@ export async function googleConfirm(c: Context<AppEnv>) {
   const db = c.env.DB;
   const live = await liveState(c.env, state, Date.now());
   if (!live || !code) return EXPIRED();
+  // Connecting is refused on Free, like the Connect button (the plan may have changed since it was pressed).
+  if (!(await entitlements(c.env, live.cal)).google) {
+    return page(402, "Not connected", "Google Calendar sync is part of the paid plans. Go back to your calendar to see your plan.");
+  }
   // One use only: whoever deletes the row first goes on.
   const used = await db.prepare("DELETE FROM google_states WHERE nonce_hash = ? RETURNING calendar_id").bind(live.nonceHash).first<{ calendar_id: string }>();
   if (used?.calendar_id !== live.cal.id) return EXPIRED();
