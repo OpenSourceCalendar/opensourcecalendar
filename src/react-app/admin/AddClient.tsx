@@ -58,6 +58,7 @@ export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string;
             id="client-name"
             className="input"
             autoFocus
+            autoComplete="off"
             maxLength={80}
             value={name}
             onChange={(e) => {
@@ -74,6 +75,7 @@ export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string;
           <input
             id="client-slug"
             className="input"
+            autoComplete="off"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -115,6 +117,7 @@ export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string;
             id="client-email"
             className="input"
             type="email"
+            autoComplete="off"
             maxLength={254}
             value={email}
             aria-invalid={!!email.trim() && !emailOk}
