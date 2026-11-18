@@ -286,6 +286,8 @@ publicRoutes.get("/:slug", async (c) => {
     branding: publicBranding(parseBranding(cal.branding)),
     services: (results as Parameters<typeof serviceJson>[0][]).map(serviceJson),
     emails: customerEmails(c.env, cal),
+    // A White-label client whose agency isn't on White-label any more: the page says so and offers no times.
+    paused: ent.paused,
     booking: {
       required_fields: rules.required_fields,
       cancel_reason_required: rules.cancel_reason_required,
@@ -304,6 +306,7 @@ publicRoutes.get("/:slug/days", async (c) => {
   if (!MONTH_RE.test(month)) return c.json({ error: "invalid_input" }, 400);
   const service = await visibleService(db, cal.id, c.req.query("service_id") ?? "");
   if (!service) return notFound(c);
+  if ((await entitlements(c.env, cal)).paused) return c.json({ month, time_zone: cal.time_zone, days: [] });
   return c.json({ month, time_zone: cal.time_zone, days: await openDays(db, cal, service, month, Date.now()) });
 });
 
@@ -315,6 +318,7 @@ publicRoutes.get("/:slug/slots", async (c) => {
   if (!isDate(date)) return c.json({ error: "invalid_input" }, 400);
   const service = await visibleService(db, cal.id, c.req.query("service_id") ?? "");
   if (!service) return notFound(c);
+  if ((await entitlements(c.env, cal)).paused) return c.json({ date, time_zone: cal.time_zone, slots: [] });
   const input = await loadSlotInput(db, cal, service, date, Date.now());
   return c.json({ date, time_zone: cal.time_zone, slots: findSlots(input).map((t) => new Date(t).toISOString()) });
 });
@@ -323,6 +327,8 @@ publicRoutes.post("/:slug/book", async (c) => {
   const db = c.env.DB;
   const cal = await calendarBySlug(db, c.req.param("slug"));
   if (!cal) return notFound(c);
+  // The real gate for a paused client (the page shows no times, but a request can still arrive).
+  if ((await entitlements(c.env, cal)).paused) return c.json({ error: "booking_paused" }, 409);
   const body = await parseBody(c, BookBody);
   if (!body.ok) return body.response;
   const b = body.data;
