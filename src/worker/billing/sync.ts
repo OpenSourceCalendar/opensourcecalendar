@@ -5,7 +5,7 @@ import { planForPrice } from "./config";
 import { sendOperatorEmail } from "./emails";
 import { isPaid, LIVE_STATUSES } from "./entitlements";
 import { stripe } from "./stripe";
-import { accountCalendars, ensureBillingRow, getBilling } from "./store";
+import { accountCalendars, ensureBillingRow, getBilling, isClient } from "./store";
 import { googlePushMany } from "../google/push";
 
 export const GRACE_MS = 30 * 86_400_000;
@@ -89,11 +89,21 @@ export async function applySubscription(env: Bindings, userId: string, sub: Stri
   let graceSub = prev.grace_subscription_id;
   let checkin = prev.grace_checkin_sent;
   let reminder = prev.grace_reminder_sent;
-  if (incomingLive) {
+  // White-label switched to Pro on the subscription that was live White-label: the same grace month as cancelling,
+  // so the clients keep running for 30 days. (Not for a new Pro subscription after White-label ended.)
+  const whiteLabelToPro = incomingLive && plan === "pro" && prev.plan === "white_label"
+    && prev.stripe_subscription_id === sub.id && LIVE_STATUSES.has(prev.status);
+  if (incomingLive && plan === "white_label") {
+    // Only a live White-label ends a grace month; a Pro renewal, update or reconcile during one must not.
     graceUntil = null;
     checkin = 0;
     reminder = 0;
-  } else if (!graceGiven && sub.status === "canceled" && plan === "white_label" && graceSub !== sub.id && (await hadRealPayment(env, sub.id))) {
+  } else if (
+    !graceGiven && graceSub !== sub.id
+    && ((sub.status === "canceled" && plan === "white_label") || whiteLabelToPro)
+    && (await hadRealPayment(env, sub.id))
+  ) {
+    // One grace per subscription (WL → Pro → WL → Pro gets one), and only after a real payment (not a trial).
     graceUntil = now + GRACE_MS;
     graceSub = sub.id;
     checkin = 0;
@@ -114,7 +124,8 @@ export async function applySubscription(env: Bindings, userId: string, sub: Stri
       sub.cancel_at_period_end || sub.cancel_at ? 1 : 0, sub.trial_end ? 1 : 0, sub.trial_end ? sub.trial_end * 1000 : null,
       graceUntil, graceSub, checkin, reminder, now, userId,
     ),
-    ...(wasPaid && !nowPaid ? droppedToFree(db, cals) : []),
+    // The account's own calendar only: paused clients lose busy sync through entitlements, and the sync loop clears them.
+    ...(wasPaid && !nowPaid ? droppedToFree(db, cals.filter((cal) => !isClient(cal))) : []),
     ...(!wasPaid && nowPaid ? becamePaid(db, cals, now) : []),
   ]);
 }

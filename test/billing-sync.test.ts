@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { applySubscription, syncSubscription } from "../src/worker/billing/sync";
 import { getBilling } from "../src/worker/billing/store";
 import { isPaid } from "../src/worker/billing/entitlements";
-import { billingEnv, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
+import { billingEnv, clientCalendar, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
 import { connectForTest } from "./google-fake";
 
 afterEach(() => vi.restoreAllMocks());
@@ -193,5 +193,78 @@ describe("syncSubscription", () => {
     const row = (await getBilling(env.DB, a.userId))!;
     expect(row.grace_subscription_id).toBe(first.id);
     expect(row.grace_until).toBe(now + 30 * DAY);
+  });
+});
+
+describe("White-label → Pro", () => {
+  async function paidWhiteLabel() {
+    const s = await setup();
+    const sub = s.fake.addSub({ customer: `cus_${s.a.userId}`, price: "price_wl_month", status: "active" });
+    s.fake.invoices.push({ subscription: sub.id, amount_paid: 5000, status: "paid" });
+    return { ...s, sub };
+  }
+
+  it("switching a paid White-label subscription to Pro starts the 30-day grace; Pro renewals don't end it", async () => {
+    const { env, a, sub } = await paidWhiteLabel();
+    const now = Date.now();
+    await syncSubscription(env, a.userId, sub.id, now);
+    sub.items.data[0].price.id = "price_pro_month";
+    await syncSubscription(env, a.userId, sub.id, now);
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ plan: "pro", status: "active", grace_until: now + 30 * DAY, grace_subscription_id: sub.id, grace_checkin_sent: 0 });
+    await setBilling(env, a.userId, { grace_checkin_sent: 1 });
+    await syncSubscription(env, a.userId, sub.id, now + DAY); // a renewal, an update or the daily reconcile
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ grace_until: now + 30 * DAY, grace_checkin_sent: 1 });
+  });
+
+  it("back to White-label ends the grace; switching to Pro again on the same subscription gives none", async () => {
+    const { env, a, sub } = await paidWhiteLabel();
+    const now = Date.now();
+    await syncSubscription(env, a.userId, sub.id, now);
+    sub.items.data[0].price.id = "price_pro_month";
+    await syncSubscription(env, a.userId, sub.id, now);
+    sub.items.data[0].price.id = "price_wl_month";
+    await syncSubscription(env, a.userId, sub.id, now);
+    expect((await getBilling(env.DB, a.userId))!.grace_until).toBeNull();
+    sub.items.data[0].price.id = "price_pro_month";
+    await syncSubscription(env, a.userId, sub.id, now);
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ plan: "pro", grace_until: null });
+  });
+
+  it("a White-label trial switched to Pro before any payment gets no grace", async () => {
+    const { env, fake, a } = await setup();
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "trialing", trial_end: Math.floor(Date.now() / 1000) + 7 * 86400 });
+    fake.invoices.push({ subscription: sub.id, amount_paid: 0, status: "paid" });
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    sub.items.data[0].price.id = "price_pro_month";
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    expect((await getBilling(env.DB, a.userId))!.grace_until).toBeNull();
+  });
+
+  it("a new Pro subscription after White-label ended gets no grace", async () => {
+    const { env, fake, a } = await setup();
+    const old = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "canceled" });
+    await setBilling(env, a.userId, { stripe_subscription_id: old.id, plan: "white_label", interval: "month", status: "canceled" });
+    const pro = fake.addSub({ customer: `cus_${a.userId}`, price: "price_pro_month", status: "active" });
+    fake.invoices.push({ subscription: pro.id, amount_paid: 1000, status: "paid" });
+    await syncSubscription(env, a.userId, pro.id, Date.now());
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ stripe_subscription_id: pro.id, plan: "pro", grace_until: null });
+  });
+});
+
+describe("drop to Free with clients", () => {
+  it("clears Google busy times on the agency's own calendar only (paused clients are tidied by the sync loop)", async () => {
+    const { env, fake, a } = await setup();
+    const c = await clientCalendar(env, a.userId);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'h1', 1, 2)").bind(a.calendarId),
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'c1', 1, 2)").bind(c.calendarId),
+    ]);
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_pro_month", status: "active" });
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    sub.status = "canceled";
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    const busy = async (id: string) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM google_busy WHERE calendar_id = ?").bind(id).first<{ n: number }>())!.n;
+    expect(await busy(a.calendarId)).toBe(0);
+    expect(await busy(c.calendarId)).toBe(1);
   });
 });
