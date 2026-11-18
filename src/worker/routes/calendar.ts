@@ -9,11 +9,11 @@ import { emailEnabled } from "../email/send";
 import type { AppEnv, Bindings, CalendarRow } from "../types";
 
 const RESERVED = new Set(["admin", "api", "app", "book", "m", "manage", "health", "images", "setup", "static", "assets", "www"]);
-const Slug = z
+export const Slug = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/)
   .refine((s) => !RESERVED.has(s), { message: "reserved" });
-const TimeZone = z.string().refine(isTimeZone, { message: "unknown time zone" });
+export const TimeZone = z.string().refine(isTimeZone, { message: "unknown time zone" });
 
 /** The owner's view of a calendar. `email_enabled`: whether this install can send email at all. */
 export function calendarJson(row: CalendarRow, env: Bindings) {
@@ -34,7 +34,7 @@ export function calendarJson(row: CalendarRow, env: Bindings) {
 const SLUG_HOLD_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** In use by another calendar, or given up by another calendar in the last 90 days. */
-async function slugTaken(db: D1Database, slug: string, exceptId?: string): Promise<boolean> {
+export async function slugTaken(db: D1Database, slug: string, exceptId?: string): Promise<boolean> {
   const row = await db.prepare("SELECT id FROM calendars WHERE slug = ?").bind(slug).first<{ id: string }>();
   if (row) return row.id !== exceptId;
   const held = await db.prepare("SELECT calendar_id FROM released_slugs WHERE slug = ? AND released_at > ?")

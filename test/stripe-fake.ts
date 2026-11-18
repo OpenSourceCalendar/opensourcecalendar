@@ -141,3 +141,13 @@ export async function setBilling(env: typeof testEnv, userId: string, fields: Re
      ON CONFLICT(user_id) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(", ") || "updated_at = excluded.updated_at"}`,
   ).bind(userId, Date.now(), ...Object.values(fields)).run();
 }
+
+/** Adds a client through POST /clients (the account must be on White-label). */
+export async function addClient(env: typeof testEnv, token: string, name = "Client Co") {
+  const slug = `client-${uniq()}`;
+  const res = await adminCall(env, token, "/clients", {
+    method: "POST", json: { business_name: name, slug, time_zone: "America/Los_Angeles", owner_email: "client@example.test" },
+  });
+  if (res.status !== 201) throw new Error(`addClient: ${res.status} ${await res.text()}`);
+  return { calendarId: ((await res.json()) as { id: string }).id, slug };
+}

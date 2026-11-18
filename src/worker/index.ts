@@ -14,6 +14,7 @@ import { services } from "./routes/services";
 import { google, googleCallback, googleConfirm } from "./routes/google";
 import { webhook } from "./routes/webhook";
 import { billing, billingWebhook } from "./routes/billing";
+import { clients } from "./routes/clients";
 import { site } from "./site/routes";
 import { runWebhookJobs } from "./webhooks/outbox";
 import { runDueJobs } from "./email/outbox";
@@ -74,6 +75,7 @@ admin.use("*", requireSession);
 admin.get("/account", accountInfo);
 // Hosted accounts only; host apps never reach billing, so it is not in mountApi.
 admin.route("/billing", billing);
+admin.route("/clients", clients); // hosted accounts only, like billing
 mountApi(admin);
 app.route("/api/admin", admin);
 
