@@ -67,6 +67,7 @@ export const requireApp = createMiddleware<AppEnv>(async (c, next) => {
  * Loads the calendar owned by (app, user). Never trusts a calendar id from the request, with one exception: a hosted
  * account's X-Client header picks one of that same account's calendars (anything else is 404, the same answer whether
  * it doesn't exist or isn't theirs). API-key apps, host-app sessions and standalone installs never read the header.
+ * An empty X-Client header counts as no header.
  */
 export const requireCalendar = createMiddleware<AppEnv>(async (c, next) => {
   const client = c.var.app.id === HOSTED_APP ? c.req.header("X-Client") : undefined;

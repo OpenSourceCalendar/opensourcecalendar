@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { app } from "../src/worker/index";
 import { call, newOwner } from "./helpers";
 import { adminCall, billingEnv, clientCalendar, hostedAccount } from "./stripe-fake";
 
@@ -32,6 +33,26 @@ describe("X-Client", () => {
     const owner = await newOwner();
     const res = await call("/api/v1/calendar", { who: owner, headers: { "X-Client": c.calendarId } });
     expect((await json<{ slug: string }>(res)).slug).toBe(owner.slug);
+  });
+
+  it("is ignored for host-app admin sessions", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const owner = await newOwner();
+    const { token } = await json<{ token: string }>(await call("/api/v1/admin-sessions", { method: "POST", who: owner }));
+    const res = await adminCall(env, token, "/calendar", { client: c.calendarId });
+    expect(res.status).toBe(200);
+    expect((await json<{ slug: string }>(res)).slug).toBe(owner.slug);
+  });
+
+  it("the home calendar's own id, or an empty header, is the home calendar", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    await clientCalendar(env, a.userId);
+    expect((await json<{ id: string }>(await adminCall(env, a.token, "/calendar", { client: a.calendarId }))).id).toBe(a.calendarId);
+    const empty = await app.request("https://book.example.test/api/admin/calendar", { headers: { Authorization: `Session ${a.token}`, "X-Client": "" } }, env);
+    expect((await json<{ id: string }>(empty)).id).toBe(a.calendarId);
   });
 
   it("every owner route acts on the selected client (services, availability, branding, appointments)", async () => {
