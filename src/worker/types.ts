@@ -29,6 +29,8 @@ export type CalendarRow = {
   id: string;
   app_id: string;
   external_user_id: string;
+  /** The hosted account that owns this calendar; null for host apps and standalone installs. */
+  account_user_id: string | null;
   slug: string;
   time_zone: string;
   rules: string;

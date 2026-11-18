@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { call, createApp, newOwner, uniq, testEnv } from "./helpers";
+import { billingEnv, hostedAccount } from "./stripe-fake";
 
 describe("setup", () => {
   it("rejects a wrong setup token", async () => {
@@ -130,5 +131,17 @@ describe("notification settings", () => {
     const cal = (await res.json()) as { email_enabled: boolean; notifications: { owner_email: string; reminder_mode: string; reminder_hours_before: number } };
     expect(cal.email_enabled).toBe(false); // no EMAIL_FROM in tests
     expect(cal.notifications).toMatchObject({ owner_email: "me@example.com", reminder_mode: "hours_before", reminder_hours_before: 3 });
+  });
+});
+
+describe("POST /calendar: the account link (0012)", () => {
+  it("a hosted account's calendar belongs to that account; a host app's to none", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const row = await env.DB.prepare("SELECT external_user_id, account_user_id FROM calendars WHERE id = ?").bind(a.calendarId).first<{ external_user_id: string; account_user_id: string | null }>();
+    expect(row).toEqual({ external_user_id: a.userId, account_user_id: a.userId });
+    const owner = await newOwner();
+    const other = await testEnv.DB.prepare("SELECT account_user_id FROM calendars WHERE slug = ?").bind(owner.slug).first<{ account_user_id: string | null }>();
+    expect(other!.account_user_id).toBeNull();
   });
 });

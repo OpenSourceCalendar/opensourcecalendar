@@ -7,7 +7,7 @@ export type BillingRow = {
   user_id: string; stripe_customer_id: string | null; stripe_subscription_id: string | null;
   plan: Plan; interval: Interval | null; status: string; current_period_end: number | null; cancel_at_period_end: number;
   trial_used: number; trial_end: number | null; grace_until: number | null; grace_subscription_id: string | null;
-  grace_checkin_sent: number; grace_reminder_sent: number; checkout_attempts: string; updated_at: number;
+  grace_checkin_sent: number; grace_reminder_sent: number; checkout_attempts: string; client_limit: number | null; updated_at: number;
 };
 
 export const getBilling = (db: D1Database, userId: string) =>

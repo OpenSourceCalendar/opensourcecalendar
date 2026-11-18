@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireCalendar } from "../auth";
+import { HOSTED_APP, requireCalendar } from "../auth";
 import { newId } from "../lib/ids";
 import { isTimeZone, parseBody } from "../lib/http";
 import { imageUrl } from "./images";
@@ -60,6 +60,8 @@ calendar.post("/", async (c) => {
     id: newId("cal"),
     app_id: c.var.app.id,
     external_user_id: c.var.userId,
+    // Hosted home calendars belong to their account; host apps and standalone installs have no account.
+    account_user_id: c.var.app.id === HOSTED_APP ? c.var.userId : null,
     slug: body.data.slug,
     time_zone: body.data.time_zone,
     rules: "{}",
@@ -69,9 +71,9 @@ calendar.post("/", async (c) => {
   };
   try {
     await db.prepare(
-      "INSERT INTO calendars (id, app_id, external_user_id, slug, time_zone, rules, branding, notifications, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO calendars (id, app_id, external_user_id, account_user_id, slug, time_zone, rules, branding, notifications, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-      .bind(row.id, row.app_id, row.external_user_id, row.slug, row.time_zone, row.rules, row.branding, row.notifications, row.created_at)
+      .bind(row.id, row.app_id, row.external_user_id, row.account_user_id, row.slug, row.time_zone, row.rules, row.branding, row.notifications, row.created_at)
       .run();
   } catch (err) {
     // Lost a race on one of the two unique constraints.
