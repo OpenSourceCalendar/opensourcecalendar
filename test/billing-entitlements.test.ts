@@ -101,4 +101,12 @@ describe("White-label and clients", () => {
     const c = await clientCalendar(testEnv, a.userId);
     expect(await entitlementsFor(billingEnv({ STRIPE_SECRET_KEY: undefined }), c.calendarId)).toMatchObject({ paused: false, footerHidden: false, googleBusy: true });
   });
+  it("a cancelled White-label trial with no grace: clients pause, the agency's calendar isn't White-label", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    await setBilling(env, a.userId, { plan: "white_label", status: "canceled" });
+    expect(await entitlementsFor(env, c.calendarId)).toMatchObject({ whiteLabel: false, paused: true, footerHidden: true });
+    expect(await entitlementsFor(env, a.calendarId)).toMatchObject({ whiteLabel: false });
+  });
 });
