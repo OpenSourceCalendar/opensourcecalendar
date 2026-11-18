@@ -3,7 +3,7 @@ import { publicBase } from "../accounts/config";
 import { enqueueEmail } from "../email/outbox";
 import type { Bindings } from "../types";
 import { billingOn } from "./config";
-import { accountCalendars } from "./store";
+import { accountCalendars, homeCalendar } from "./store";
 import { stripe } from "./stripe";
 import { applySubscription, droppedToFree, syncSubscription, type StripeSub } from "./sync";
 
@@ -13,7 +13,7 @@ const REMIND_BEFORE = 7 * DAY;
 export const isReconcileMinute = (now: number) => new Date(now).getUTCHours() >= 10;
 
 async function graceEmail(env: Bindings, userId: string, kind: "email.account.grace_start" | "email.account.grace_end", until: number, now: number) {
-  const cal = (await accountCalendars(env.DB, userId))[0];
+  const cal = await homeCalendar(env.DB, userId);
   if (!cal) return;
   await enqueueEmail(env.DB, cal.id, kind, { appointment_id: "", origin: publicBase(env), user_id: userId, until }, now).run();
 }

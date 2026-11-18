@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { entitlements, entitlementsFor, isPaid } from "../src/worker/billing/entitlements";
 import type { CalendarRow } from "../src/worker/types";
 import { newOwner, testEnv } from "./helpers";
-import { billingEnv, hostedAccount, setBilling } from "./stripe-fake";
+import { accountCalendars, homeCalendar } from "../src/worker/billing/store";
+import { billingEnv, clientCalendar, hostedAccount, setBilling } from "./stripe-fake";
 
 const cal = async (env: typeof testEnv, id: string) => (await env.DB.prepare("SELECT * FROM calendars WHERE id = ?").bind(id).first<CalendarRow>())!;
 const DAY = 86_400_000;
@@ -39,5 +40,22 @@ describe("entitlements", () => {
     const a = await hostedAccount(env);
     await setBilling(env, a.userId, { plan: "pro", status: "trialing" });
     expect(await entitlementsFor(env, a.calendarId)).toMatchObject({ plan: "pro", limited: false, reminders: true, google: true, footerForced: false });
+  });
+});
+
+describe("the account behind a calendar", () => {
+  it("a client calendar uses its account's plan", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    expect(await entitlementsFor(env, c.calendarId)).toMatchObject({ plan: "white_label", limited: false, reminders: true });
+  });
+  it("accountCalendars lists every calendar of the account; homeCalendar finds the account's own even when a client is older", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId, 0);
+    expect((await accountCalendars(env.DB, a.userId)).map((x) => x.id)).toEqual([c.calendarId, a.calendarId]);
+    expect((await homeCalendar(env.DB, a.userId))!.id).toBe(a.calendarId);
   });
 });

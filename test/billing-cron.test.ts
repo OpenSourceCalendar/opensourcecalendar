@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { runBillingCron, isReconcileMinute } from "../src/worker/billing/cron";
 import { getBilling } from "../src/worker/billing/store";
-import { billingEnv, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
+import { billingEnv, clientCalendar, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
 
 // The daily reconcile may run in any test here (it runs from 10:00 UTC): never let it reach the real Stripe.
 beforeEach(() => void vi.spyOn(globalThis, "fetch").mockImplementation(new FakeStripe().fetch));
@@ -11,6 +11,15 @@ const jobs = (env: ReturnType<typeof billingEnv>, cal: string, kind: string) =>
   env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE calendar_id = ? AND kind = ?").bind(cal, kind).first<{ n: number }>().then((r) => r!.n);
 
 describe("billing cron", () => {
+  it("grace emails go to the account's own calendar even when a client is older", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId, 0);
+    await setBilling(env, a.userId, { plan: "white_label", status: "canceled", grace_until: Date.now() + 30 * DAY, grace_subscription_id: "sub_home" });
+    await runBillingCron(env, Date.now());
+    expect(await jobs(env, a.calendarId, "email.account.grace_start")).toBe(1);
+    expect(await jobs(env, c.calendarId, "email.account.grace_start")).toBe(0);
+  });
   it("queues the check-in once, the reminder in the last week once, then ends grace", async () => {
     const env = billingEnv();
     const a = await hostedAccount(env);

@@ -19,11 +19,19 @@ export const ensureBillingRow = (db: D1Database, userId: string, now: number) =>
 export const billingByCustomer = (db: D1Database, customerId: string) =>
   db.prepare("SELECT * FROM billing WHERE stripe_customer_id = ?").bind(customerId).first<BillingRow>();
 
-/** The account's calendars (one today; White-label will have several). */
+/** The account's calendars, its own and its clients', oldest first. Code that needs the account's own uses homeCalendar. */
 export async function accountCalendars(db: D1Database, userId: string): Promise<CalendarRow[]> {
-  return (await db.prepare("SELECT * FROM calendars WHERE app_id = ? AND external_user_id = ? ORDER BY created_at")
+  return (await db.prepare("SELECT * FROM calendars WHERE app_id = ? AND account_user_id = ? ORDER BY created_at")
     .bind(HOSTED_APP, userId).all<CalendarRow>()).results;
 }
+
+/** The account's own calendar, made right after sign-up (external_user_id is the user id). */
+export const homeCalendar = (db: D1Database, userId: string) =>
+  db.prepare("SELECT * FROM calendars WHERE app_id = ? AND external_user_id = ?").bind(HOSTED_APP, userId).first<CalendarRow>();
+
+/** A White-label client's calendar: hosted, and not the account's own. Host-app and standalone calendars never are. */
+export const isClient = (cal: Pick<CalendarRow, "external_user_id" | "account_user_id">) =>
+  cal.account_user_id !== null && cal.external_user_id !== cal.account_user_id;
 
 export const userEmail = async (db: D1Database, userId: string) =>
   (await db.prepare("SELECT email FROM users WHERE id = ?").bind(userId).first<{ email: string }>())?.email ?? null;

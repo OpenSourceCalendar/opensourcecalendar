@@ -30,16 +30,17 @@ export function isPaid(row: Pick<BillingRow, "plan" | "status" | "grace_until"> 
 /** Does billing apply to this calendar at all? Only hosted accounts, only with billing on. */
 export const billed = (env: Bindings, cal: Pick<CalendarRow, "app_id">) => cal.app_id === HOSTED_APP && billingOn(env);
 
-export async function entitlements(env: Bindings, cal: Pick<CalendarRow, "app_id" | "external_user_id">, now = Date.now()): Promise<Entitlements> {
+export async function entitlements(env: Bindings, cal: Pick<CalendarRow, "app_id" | "account_user_id">, now = Date.now()): Promise<Entitlements> {
   if (!billed(env, cal)) return ALL;
-  const row = await getBilling(env.DB, cal.external_user_id);
+  // Every hosted calendar has account_user_id (migration 0012 filled in the older ones).
+  const row = await getBilling(env.DB, cal.account_user_id!);
   if (isPaid(row, now)) return { ...ALL, plan: row!.status === "canceled" ? "white_label" : row!.plan };
   return FREE;
 }
 
 export async function entitlementsFor(env: Bindings, calendarId: string, now = Date.now()): Promise<Entitlements> {
   if (!billingOn(env)) return ALL;
-  const cal = await env.DB.prepare("SELECT app_id, external_user_id FROM calendars WHERE id = ?").bind(calendarId)
-    .first<Pick<CalendarRow, "app_id" | "external_user_id">>();
+  const cal = await env.DB.prepare("SELECT app_id, account_user_id FROM calendars WHERE id = ?").bind(calendarId)
+    .first<Pick<CalendarRow, "app_id" | "account_user_id">>();
   return cal ? entitlements(env, cal, now) : ALL;
 }

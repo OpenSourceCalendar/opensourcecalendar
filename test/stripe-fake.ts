@@ -113,6 +113,17 @@ export async function hostedAccount(env: typeof testEnv) {
   return { userId, token, calendarId: id, slug };
 }
 
+/** A client calendar of a hosted account, straight in the table (POST /clients itself is tested in clients.test.ts). */
+export async function clientCalendar(env: typeof testEnv, userId: string, createdAt = Date.now()) {
+  const id = `cal_${uniq()}`;
+  const slug = `client-${uniq()}`;
+  await env.DB.prepare(
+    `INSERT INTO calendars (id, app_id, external_user_id, account_user_id, slug, time_zone, rules, branding, notifications, created_at)
+     VALUES (?, 'app_hosted', ?, ?, ?, 'America/Los_Angeles', '{}', ?, '{}', ?)`,
+  ).bind(id, `${userId}:${id}`, userId, slug, JSON.stringify({ business_name: "Client Co" }), createdAt).run();
+  return { calendarId: id, slug };
+}
+
 export async function setBilling(env: typeof testEnv, userId: string, fields: Record<string, unknown>) {
   const cols = Object.keys(fields);
   await env.DB.prepare(

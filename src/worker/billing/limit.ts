@@ -33,6 +33,6 @@ export async function markIfOverLimit(env: Bindings, cal: CalendarRow, appointme
   const { month } = monthBounds(now, cal.time_zone);
   const first = await env.DB.prepare("INSERT OR IGNORE INTO free_limit_notices (calendar_id, month) VALUES (?, ?)").bind(cal.id, month).run();
   if (first.meta.changes) {
-    await enqueueEmail(env.DB, cal.id, "email.account.limit", { appointment_id: "", origin: publicBase(env), user_id: cal.external_user_id, month }, now).run();
+    await enqueueEmail(env.DB, cal.id, "email.account.limit", { appointment_id: "", origin: publicBase(env), user_id: cal.account_user_id!, month }, now).run();
   }
 }
