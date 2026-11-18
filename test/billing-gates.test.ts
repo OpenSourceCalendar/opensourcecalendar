@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildEmail } from "../src/worker/email/send";
 import { app } from "../src/worker/index";
-import { billingEnv, hostedAccount, setBilling } from "./stripe-fake";
+import { billingEnv, clientCalendar, hostedAccount, setBilling } from "./stripe-fake";
 
 /** One booked appointment straight in the table (an hour from tomorrow), with a customer email. */
 async function appt(env: ReturnType<typeof billingEnv>, calendarId: string, extra = "") {
@@ -55,5 +55,22 @@ describe("gates", () => {
     await setBilling(env, a.userId, { plan: "pro", status: "active" });
     const res2 = await app.request(`https://book.example.test/api/public/${a.slug}`, {}, env);
     expect(((await res2.json()) as { booking: { powered_by: boolean } }).booking.powered_by).toBe(false);
+  });
+  it("White-label: no footer on the page or in emails even with the setting on; back on Free the own page shows it again", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    await env.DB.prepare("UPDATE calendars SET rules = json_set(rules, '$.powered_by', json('true')) WHERE id IN (?, ?)").bind(a.calendarId, c.calendarId).run();
+    const footer = async (slug: string) =>
+      ((await (await app.request(`https://book.example.test/api/public/${slug}`, {}, env)).json()) as { booking: { powered_by: boolean } }).booking.powered_by;
+    expect(await footer(a.slug)).toBe(false);
+    expect(await footer(c.slug)).toBe(false);
+    const { id } = await appt(env, a.calendarId);
+    const booked = await buildEmail(env, a.calendarId, "email.customer.booked", { appointment_id: id, origin: "https://book.example.test" }, Date.now());
+    if (!("message" in booked)) throw new Error("expected a message");
+    expect(booked.message.text).not.toContain("using Open Source Calendar");
+    await setBilling(env, a.userId, { plan: "white_label", status: "canceled" });
+    expect(await footer(a.slug)).toBe(true);
   });
 });

@@ -125,7 +125,7 @@ publicRoutes.get("/manage/:token", async (c) => {
     change_cutoff_hours: rules.change_cutoff_hours,
     cancel_reason_required: rules.cancel_reason_required,
     max_days_ahead: rules.max_days_ahead,
-    powered_by: rules.powered_by || ent.footerForced,
+    powered_by: (rules.powered_by || ent.footerForced) && !ent.footerHidden,
   });
 });
 
@@ -291,7 +291,7 @@ publicRoutes.get("/:slug", async (c) => {
       cancel_reason_required: rules.cancel_reason_required,
       change_cutoff_hours: rules.change_cutoff_hours,
       max_days_ahead: rules.max_days_ahead,
-      powered_by: rules.powered_by || ent.footerForced,
+      powered_by: (rules.powered_by || ent.footerForced) && !ent.footerHidden,
     },
   });
 });

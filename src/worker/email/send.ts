@@ -115,7 +115,7 @@ export async function buildEmail(env: Bindings, calendarId: string, kind: EmailK
     scheduleUrl: `${base}/admin/schedule`,
     locationText: locationText(service, forOwner),
     confirmationMessage: notifications.confirmation_message,
-    poweredBy: parseRules(cal.rules).powered_by || ent.footerForced,
+    poweredBy: (parseRules(cal.rules).powered_by || ent.footerForced) && !ent.footerHidden,
     cancelReason: appt.cancel_reason,
     customer: { name: `${appt.contact_first_name} ${appt.contact_last_name}`.trim(), phone: appt.contact_phone, email: appt.contact_email },
     note: appt.note,
