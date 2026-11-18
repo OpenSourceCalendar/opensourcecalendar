@@ -3,13 +3,12 @@ import { ApiError } from "../api";
 import { allZones, zoneOffset } from "../time";
 import { adminApi, adminErrorText, type AdminCalendar } from "./api";
 import { Dialog } from "./Dialog";
-import { setClientId } from "./session";
-import { DEFAULT_WEEK, FIRST_SERVICE, slugify } from "./Setup";
+import { slugify } from "./Setup";
 import { cleanSlug, SLUG_HINT, SLUG_RE, useSlugCheck } from "./slug";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** White-label: add a client business. It starts like a new hosted calendar: weekdays 9–5 and one service. */
+/** White-label: add a client business. The app then opens it and gives it a new hosted calendar's start: weekdays 9–5 and one service. */
 export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string; onClose: () => void; onAdded: (calendar: AdminCalendar) => void }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -39,11 +38,7 @@ export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string;
     setBusy(true);
     setError("");
     try {
-      const created = await adminApi.addClient({ business_name: name.trim(), slug, time_zone: zone, owner_email: email.trim() });
-      // From here on, calls are about the new client. A working booking page from the start; failures don't block.
-      setClientId(created.id);
-      await Promise.allSettled([adminApi.saveWeekly(DEFAULT_WEEK), adminApi.createService(FIRST_SERVICE)]);
-      onAdded(created);
+      onAdded(await adminApi.addClient({ business_name: name.trim(), slug, time_zone: zone, owner_email: email.trim() }));
     } catch (err) {
       if (err instanceof ApiError && err.error === "slug_taken") setTakenOnSave(slug);
       else setError(adminErrorText(err));

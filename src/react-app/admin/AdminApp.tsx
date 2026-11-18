@@ -16,7 +16,7 @@ import { Notifications } from "./Notifications";
 import { Plan } from "./Plan";
 import { Services } from "./Services";
 import { captureSessionFromUrl, clearToken, getClientId, getToken, lastCalendarId, setClientId, setLastCalendarId } from "./session";
-import { Setup } from "./Setup";
+import { DEFAULT_WEEK, FIRST_SERVICE, Setup } from "./Setup";
 import { Share } from "./Share";
 import { ComingSoon, NAV, Shell } from "./Shell";
 import { SignedOut } from "./SignedOut";
@@ -201,7 +201,8 @@ export function AdminApp() {
   const businessName = calendar?.branding.business_name;
   useEffect(() => {
     if (!calendarId) return;
-    adminApi.clients().then(setClients, () => setClients(null));
+    // Only a 404 means "no list" (not a hosted account); after any other failure it stays unknown until the next load.
+    adminApi.clients().then(setClients, (e) => e instanceof ApiError && e.status === 404 && setClients(null));
   }, [calendarId, businessName]);
 
   const onGooglePage = path === "/admin/google";
@@ -229,14 +230,19 @@ export function AdminApp() {
     setState({ kind: "signed-out", ended: false });
   }
 
-  /** Open another business: its own screens, from its dashboard (or `to`). The agency's own is stored as "no client". */
-  function switchClient(id: string, to = "/admin") {
+  /**
+   * Open another business: its own screens, from its dashboard (or `to`). The agency's own is stored as "no client".
+   * The old screens go first: from here on every call is about the new business. `prepare` runs before it loads.
+   */
+  async function switchClient(id: string, to = "/admin", prepare?: () => Promise<unknown>) {
     setClientId(clients?.calendars.find((x) => x.id === id)?.home ? null : id);
     setEntry(null);
     setLeaveTo(null);
     dirty.current = false;
+    setState({ kind: "loading" });
     go(to);
     switched.current = true;
+    if (prepare) await prepare();
     void load();
   }
 
@@ -257,7 +263,7 @@ export function AdminApp() {
   function pickClient(id: string) {
     if (id === calendar?.id) return;
     if (dirty.current) setLeaveTo({ client: id });
-    else switchClient(id);
+    else void switchClient(id);
   }
 
   const toastEl = <Toast toast={toast} onClose={closeToast} />;
@@ -346,7 +352,7 @@ export function AdminApp() {
       ) : path === "/admin/notifications" ? (
         <Notifications {...page} billing={pageBilling} paused={paused} />
       ) : path === "/admin/branding" ? (
-        <Branding {...page} billing={pageBilling} footerHidden={onWhiteLabel(pageBilling) || paused} />
+        <Branding {...page} billing={pageBilling} footerHidden={onWhiteLabel(pageBilling) || paused} paused={paused} />
       ) : path === "/admin/share" ? (
         <Share {...page} />
       ) : path === "/admin/google" ? (
@@ -381,7 +387,10 @@ export function AdminApp() {
           onAdded={(created) => {
             setAdding(false);
             setToast({ text: `Added ${created.branding.business_name}. Set up its services and hours.` });
-            switchClient(created.id, "/admin/services");
+            // A working booking page from the start; failures don't block.
+            void switchClient(created.id, "/admin/services", () =>
+              Promise.allSettled([adminApi.saveWeekly(DEFAULT_WEEK), adminApi.createService(FIRST_SERVICE)]),
+            );
           }}
         />
       )}
@@ -404,7 +413,7 @@ export function AdminApp() {
                   // The edits are dropped by closing this page; the new client opens once added.
                   go("/admin");
                   setAdding(true);
-                } else if (typeof to === "object") switchClient(to.client);
+                } else if (typeof to === "object") void switchClient(to.client);
                 else go(to);
               }}
             >
