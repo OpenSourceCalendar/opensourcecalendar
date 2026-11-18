@@ -2247,3 +2247,7 @@ a.status-link.is-warn {
 .client-picker .link {
   justify-self: start;
 }
+/* Focused after switching business (for screen readers and the keyboard), not a control. */
+.admin-main:focus {
+  outline: none;
+}

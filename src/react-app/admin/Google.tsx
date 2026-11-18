@@ -121,6 +121,7 @@ export function Google({
 
   // On Free, or for a paused client, busy sync is off and connecting is refused, so the connect buttons lead to the Plan page.
   const free = onFree(billing) || paused;
+  const pausedNote = paused ? "Paused — subscribe to White-label to turn it back on." : "Paused on Free. Upgrade to turn it back on.";
   const toPlan = (
     <button type="button" className="btn btn-primary btn-auto" onClick={() => navigate("/admin/plan")}>
       See plans
@@ -208,7 +209,7 @@ export function Google({
           </ul>
           {free ? (
             <>
-              <p>Google Calendar sync is included in Pro.</p>
+              <p>{paused ? "Subscribe to White-label to turn Google Calendar sync back on." : "Google Calendar sync is included in Pro."}</p>
               {toPlan}
             </>
           ) : waitingNote || (
@@ -235,7 +236,7 @@ export function Google({
           </h2>
           <p>{PROBLEMS[google.problem ?? ""] ?? "Something went wrong with the connection."}</p>
           <p className="muted small">Until you reconnect, new bookings aren't added to Google. Times you were busy before still stay blocked.</p>
-          {free && <p>Paused on Free. Upgrade to turn it back on.</p>}
+          {free && <p>{pausedNote}</p>}
           {waitingNote || (
             <div className="gc-actions">
               {free ? (
@@ -271,7 +272,7 @@ export function Google({
         {free && (
           <>
             <p className="gc-warning" role="status">
-              Paused on Free. Upgrade to turn it back on.
+              {pausedNote}
             </p>
             {toPlan}
           </>

@@ -43,6 +43,7 @@ export interface PageProps {
 }
 
 const SIGN_OUT = Symbol("sign out");
+const ADD_CLIENT = Symbol("add client");
 
 /** The chosen business's calendar. A stored client that's gone or isn't this account's falls back to the agency's own. */
 async function loadCalendar(): Promise<AdminCalendar> {
@@ -64,8 +65,8 @@ export function AdminApp() {
   // Bumped whenever New Entry saves, so the screen behind refetches.
   const [saves, setSaves] = useState(0);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // Where the owner was heading when the leave guard stopped them: a path, another business, or signing out.
-  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | { client: string } | null>(null);
+  // Where the owner was heading when the leave guard stopped them: a path, another business, adding one, or signing out.
+  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | typeof ADD_CLIENT | { client: string } | null>(null);
   const dirty = useRef(false);
   const shownPath = useRef(path);
   shownPath.current = path;
@@ -194,8 +195,8 @@ export function AdminApp() {
   }, [calendarId, loadBilling]);
 
   // The account's businesses, for the White-label picker (hosted accounts only; others get a 404 and no picker).
-  // Reloaded when another business opens or this one's name changes.
-  const [clients, setClients] = useState<ClientList | null>(null);
+  // Reloaded when another business opens or this one's name changes. Undefined until the first answer; null without a list.
+  const [clients, setClients] = useState<ClientList | null | undefined>(undefined);
   const [adding, setAdding] = useState(false);
   const businessName = calendar?.branding.business_name;
   useEffect(() => {
@@ -235,7 +236,22 @@ export function AdminApp() {
     setLeaveTo(null);
     dirty.current = false;
     go(to);
+    switched.current = true;
     void load();
+  }
+
+  // After a switch the screens are new (Shell remounts), so move focus to them instead of leaving it on the old picker.
+  const switched = useRef(false);
+  useEffect(() => {
+    if (!switched.current || !calendarId) return;
+    switched.current = false;
+    document.querySelector<HTMLElement>(".admin-main")?.focus();
+  }, [calendarId]);
+
+  /** Add client opens another business when done, so unsaved edits on this page are confirmed first. */
+  function addClient() {
+    if (dirty.current) setLeaveTo(ADD_CLIENT);
+    else setAdding(true);
   }
 
   function pickClient(id: string) {
@@ -289,12 +305,16 @@ export function AdminApp() {
   const customerId = path.startsWith("/admin/customers/") ? decodeURIComponent(path.slice("/admin/customers/".length)) : null;
   const known = NAV.find((n) => n.path === path);
   const shown = clients?.calendars.find((x) => x.id === state.calendar.id);
+  // Without a list (not a hosted account) it's the account's own calendar. With one that doesn't have this calendar yet
+  // (still loading, or just added), whether it's a client or paused isn't known, so the plan notes wait.
+  const clientKnown = clients === null || !!shown;
   const paused = !!shown?.paused;
   const client = !!shown && !shown.home;
+  const pageBilling = clientKnown ? billing : null;
   // Shown once there's more than one business, or when the plan can add one.
   const picker =
     clients && (clients.calendars.length > 1 || canAddClients(billing)) ? (
-      <ClientPicker clients={clients} currentId={state.calendar.id} onPick={pickClient} onAdd={canAddClients(billing) ? () => setAdding(true) : null} />
+      <ClientPicker clients={clients} currentId={state.calendar.id} onPick={pickClient} onAdd={canAddClients(billing) ? addClient : null} />
     ) : null;
 
   return (
@@ -307,7 +327,7 @@ export function AdminApp() {
       navigate={navigate}
       onNewEntry={() => setEntry({})}
       onSignOut={signOut}
-      client={client}
+      client={client || !clientKnown}
       paused={paused}
       picker={picker}
     >
@@ -324,15 +344,15 @@ export function AdminApp() {
       ) : customerId ? (
         <CustomerPage key={customerId} {...page} id={customerId} reloadKey={saves} onBook={(customer) => setEntry({ customer })} />
       ) : path === "/admin/notifications" ? (
-        <Notifications {...page} billing={billing} paused={paused} />
+        <Notifications {...page} billing={pageBilling} paused={paused} />
       ) : path === "/admin/branding" ? (
-        <Branding {...page} billing={billing} footerHidden={onWhiteLabel(billing) || paused} />
+        <Branding {...page} billing={pageBilling} footerHidden={onWhiteLabel(pageBilling) || paused} />
       ) : path === "/admin/share" ? (
         <Share {...page} />
       ) : path === "/admin/google" ? (
-        <Google {...page} google={google} onGoogle={setGoogle} billing={billing} paused={paused} />
+        <Google {...page} google={google} onGoogle={setGoogle} billing={pageBilling} paused={paused} />
       ) : path === "/admin/plan" && billing?.enabled ? (
-        <Plan billing={billing} reload={loadBilling} clients={clients} />
+        <Plan billing={billing} reload={loadBilling} clients={clients ?? null} />
       ) : path === "/admin/plan" && !billing ? null : known ? (
         <ComingSoon title={known.label} />
       ) : (
@@ -380,7 +400,11 @@ export function AdminApp() {
                 setLeaveTo(null);
                 dirty.current = false;
                 if (to === SIGN_OUT) leave();
-                else if (typeof to === "object") switchClient(to.client);
+                else if (to === ADD_CLIENT) {
+                  // The edits are dropped by closing this page; the new client opens once added.
+                  go("/admin");
+                  setAdding(true);
+                } else if (typeof to === "object") switchClient(to.client);
                 else go(to);
               }}
             >

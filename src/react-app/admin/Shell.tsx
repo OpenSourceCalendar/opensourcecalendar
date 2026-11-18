@@ -41,7 +41,7 @@ export function Shell({
   navigate: (path: string) => void;
   onNewEntry: () => void;
   onSignOut: () => void;
-  /** This calendar is a White-label client's (not the agency's own). */
+  /** This calendar is a White-label client's (not the agency's own), or that isn't known yet: no Free-limit banner. */
   client: boolean;
   /** This calendar is a paused White-label client. */
   paused: boolean;
@@ -164,7 +164,7 @@ export function Shell({
         </div>
       </aside>
 
-      <main className="admin-main">
+      <main className="admin-main" tabIndex={-1}>
         <Banners billing={billing} client={client} paused={paused} navigate={navigate} />
         <div className="admin-main-inner">{children}</div>
       </main>

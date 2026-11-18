@@ -51,8 +51,9 @@ export function AddClient({ zone: startZone, onClose, onAdded }: { zone: string;
     }
   }
 
+  // Not closable mid-create: the new client would be half set up.
   return (
-    <Dialog kind="modal" title="Add a client" onClose={onClose}>
+    <Dialog kind="modal" title="Add a client" onClose={busy ? () => {} : onClose}>
       <form className="form" onSubmit={submit}>
         <div className="field">
           <label className="label" htmlFor="client-name">

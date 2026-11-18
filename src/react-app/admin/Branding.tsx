@@ -208,7 +208,7 @@ export function Branding({ calendar, notify, setDirty, onCalendar, billing, foot
               Show "Powered by Open Source Calendar" at the bottom
             </label>
             {forcedFooter && <p className="hint">Pro removes the footer.</p>}
-            {hiddenFooter && <p className="hint">Hidden on White-label.</p>}
+            {hiddenFooter && <p className="hint">Hidden for client businesses.</p>}
           </section>
           <p className="muted small">Save to update your live booking page.</p>
         </div>
