@@ -7,6 +7,7 @@ import { parseBranding, parseNotifications, parseRules } from "../settings";
 import type { Bindings, CalendarRow } from "../types";
 import { buildAccountEmail } from "../billing/emails";
 import { entitlements } from "../billing/entitlements";
+import { isClient } from "../billing/store";
 import { calendarOverDailyCap } from "./limits";
 import type { EmailKind, EmailPayload, OutgoingEmail, Sender } from "./outbox";
 import { customerEmail, oneLine, ownerEmail, type CustomerKind, type EmailFacts, type OwnerKind } from "./templates";
@@ -112,7 +113,7 @@ export async function buildEmail(env: Bindings, calendarId: string, kind: EmailK
     timeZone: forOwner ? cal.time_zone : (appt.customer_time_zone ?? cal.time_zone),
     manageUrl,
     bookUrl: `${base}/book/${cal.slug}`,
-    scheduleUrl: `${base}/admin/schedule`,
+    scheduleUrl: isClient(cal) ? null : `${base}/admin/schedule`,
     locationText: locationText(service, forOwner),
     confirmationMessage: notifications.confirmation_message,
     poweredBy: (parseRules(cal.rules).powered_by || ent.footerForced) && !ent.footerHidden,

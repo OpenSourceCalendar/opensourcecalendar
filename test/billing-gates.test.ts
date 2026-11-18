@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildEmail } from "../src/worker/email/send";
 import { app } from "../src/worker/index";
-import { billingEnv, clientCalendar, hostedAccount, setBilling } from "./stripe-fake";
+import { addClient, billingEnv, clientCalendar, hostedAccount, setBilling } from "./stripe-fake";
 
 /** One booked appointment straight in the table (an hour from tomorrow), with a customer email. */
 async function appt(env: ReturnType<typeof billingEnv>, calendarId: string, extra = "") {
@@ -19,6 +19,22 @@ async function appt(env: ReturnType<typeof billingEnv>, calendarId: string, extr
 }
 
 describe("gates", () => {
+  it("a client's owner email goes to the client's address and has no dashboard link", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    const c = await addClient(env, a.token);
+    const { id } = await appt(env, c.calendarId);
+    const built = await buildEmail(env, c.calendarId, "email.owner.new", { appointment_id: id, origin: "https://book.example.test" }, Date.now());
+    if (!("message" in built)) throw new Error("expected a message");
+    expect(built.message.to).toBe("client@example.test");
+    expect(built.message.text).not.toContain("/admin/schedule");
+    await env.DB.prepare("UPDATE calendars SET notifications = json_set(notifications, '$.owner_email', 'agency@example.test') WHERE id = ?").bind(a.calendarId).run();
+    const own = await appt(env, a.calendarId);
+    const home = await buildEmail(env, a.calendarId, "email.owner.new", { appointment_id: own.id, origin: "https://book.example.test" }, Date.now());
+    if (!("message" in home)) throw new Error("expected a message");
+    expect(home.message.text).toContain("/admin/schedule");
+  });
   it("an emails_off booking sends nothing", async () => {
     const env = billingEnv();
     const a = await hostedAccount(env);

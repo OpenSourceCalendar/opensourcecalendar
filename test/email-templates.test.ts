@@ -65,6 +65,12 @@ describe("owner emails", () => {
     expect(ownerEmail("cancelled", base).text).toContain("Running late");
     expect(ownerEmail("new", base).text).not.toContain("Running late");
   });
+  it("owner emails leave out the schedule link when there's no dashboard to open (a White-label client)", () => {
+    const e = ownerEmail("new", { ...base, scheduleUrl: null });
+    expect(e.text).not.toContain("Open your schedule");
+    expect(e.text).not.toContain("sign in");
+    expect(e.html).not.toContain("Open your schedule");
+  });
 });
 
 describe("escaping", () => {

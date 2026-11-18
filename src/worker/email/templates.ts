@@ -16,7 +16,8 @@ export interface EmailFacts {
   /** Null on cancellation emails. */
   manageUrl: string | null;
   bookUrl: string;
-  scheduleUrl: string;
+  /** Null for a White-label client: it has no login yet, so the link would land on our sign-in page. */
+  scheduleUrl: string | null;
   locationText: string;
   confirmationMessage: string;
   /** "Powered by" setting: adds "using Open Source Calendar" to the footer. */
@@ -219,8 +220,9 @@ export function ownerEmail(kind: OwnerKind, f: EmailFacts): EmailBody {
       heading,
       paragraphs: kind === "changed" ? ["The new time is below."] : [],
       details,
-      button: { label: "Open your schedule", url: f.scheduleUrl },
-      smallPrint: "If that asks you to sign in, open the calendar from your app.",
+      ...(f.scheduleUrl
+        ? { button: { label: "Open your schedule", url: f.scheduleUrl }, smallPrint: "If that asks you to sign in, open the calendar from your app." }
+        : {}),
     }),
   };
 }
