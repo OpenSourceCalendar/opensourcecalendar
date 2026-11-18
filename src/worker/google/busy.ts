@@ -91,7 +91,7 @@ const CHECK_DEADLINE_MS = 2_500;
 export async function checkGoogleWindow(env: Bindings, cal: CalendarRow, start: number, end: number, now: number): Promise<void> {
   const cfg = googleConfig(env);
   if (!cfg) return;
-  if (!(await entitlements(env, cal, now)).google) return;
+  if (!(await entitlements(env, cal, now)).googleBusy) return;
   const work = (async () => {
     const conn = await getConnection(env.DB, cal.id);
     if (!conn || conn.status !== "active") return;
@@ -135,9 +135,9 @@ export async function runGoogleSync(env: Bindings, now: number): Promise<number>
     await db.prepare("UPDATE google_connections SET last_attempt_at = ? WHERE calendar_id = ?").bind(now, conn.calendar_id).run();
     const cal = await db.prepare("SELECT * FROM calendars WHERE id = ?").bind(conn.calendar_id).first<CalendarRow>();
     if (!cal) continue;
-    // Free plan: sync is paused (not an error), so the connection is kept and picks up again once paid. Stored busy
+    // Free plan, or a paused client: sync is paused (not an error), so the connection is kept and picks up again once paid. Stored busy
     // times would go stale, so they're cleared (cheap, and safe to repeat), and the hash so the first paid sync rewrites them.
-    if (!(await entitlements(env, cal, now)).google) {
+    if (!(await entitlements(env, cal, now)).googleBusy) {
       await db.batch([
         db.prepare("DELETE FROM google_busy WHERE calendar_id = ?").bind(cal.id),
         db.prepare("UPDATE google_connections SET busy_hash = NULL WHERE calendar_id = ?").bind(cal.id),

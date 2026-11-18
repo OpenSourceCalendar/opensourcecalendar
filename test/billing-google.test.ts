@@ -3,7 +3,7 @@ import { runGoogleSync } from "../src/worker/google/busy";
 import { runGoogleJobs } from "../src/worker/google/push";
 import { app } from "../src/worker/index";
 import { connectForTest, FakeGoogle } from "./google-fake";
-import { billingEnv, hostedAccount, setBilling } from "./stripe-fake";
+import { adminCall, billingEnv, clientCalendar, hostedAccount, setBilling } from "./stripe-fake";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -67,5 +67,34 @@ describe("Google on Free", () => {
     }, env);
     expect(confirm.status).toBe(402);
     expect(await env.DB.prepare("SELECT 1 FROM google_connections WHERE calendar_id = ?").bind(a.calendarId).first()).toBeNull();
+  });
+});
+
+describe("Google for a paused client", () => {
+  it("busy sync is off (stored busy times cleared, Google not called), pushes still run, connecting is refused", async () => {
+    const env = billingEnv();
+    const fake = new FakeGoogle();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "pro", status: "active" });
+    const c = await clientCalendar(env, a.userId);
+    await connectForTest(c.calendarId);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE google_connections SET busy_hash = 'h', last_attempt_at = 0 WHERE calendar_id = ?").bind(c.calendarId),
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'stale', 1, 2)").bind(c.calendarId),
+    ]);
+    await runGoogleSync(env, Date.now());
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM google_busy WHERE calendar_id = ?").bind(c.calendarId).first<{ n: number }>())!.n).toBe(0);
+    expect(fake.googleCalls().length).toBe(0);
+
+    const job = `job_${c.calendarId}`;
+    await env.DB.prepare("INSERT INTO jobs (id, calendar_id, kind, payload, run_at) VALUES (?, ?, 'google.push', ?, 0)").bind(job, c.calendarId, JSON.stringify({ appointment_id: "apt_x" })).run();
+    await runGoogleJobs(env, Date.now());
+    const row = await env.DB.prepare("SELECT attempts, result FROM jobs WHERE id = ?").bind(job).first<{ attempts: number; result: string | null }>();
+    expect(row!.attempts).toBe(1);
+    expect(row!.result).not.toBe("skipped:plan");
+
+    const res = await adminCall(env, a.token, "/google/connect", { method: "POST", client: c.calendarId });
+    expect(res.status).toBe(402);
   });
 });

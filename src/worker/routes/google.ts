@@ -79,7 +79,7 @@ google.get("/busy", async (c) => {
 });
 
 google.post("/connect", async (c) => {
-  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
+  if (!(await entitlements(c.env, c.var.calendar)).googleBusy) return c.json({ error: "plan_required" }, 402);
   const cfg = googleConfig(c.env);
   if (!cfg) return c.json({ error: "not_configured" }, 503);
   const db = c.env.DB;
@@ -121,7 +121,7 @@ google.get("/calendars", async (c) => {
 });
 
 google.put("/calendar", async (c) => {
-  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
+  if (!(await entitlements(c.env, c.var.calendar)).googleBusy) return c.json({ error: "plan_required" }, 402);
   const body = await parseBody(c, z.object({ id: z.string().min(1).max(1024) }));
   if (!body.ok) return body.response;
   const ctx = await active(c);
@@ -153,7 +153,7 @@ google.put("/calendar", async (c) => {
 });
 
 google.post("/sync", async (c) => {
-  if (!(await entitlements(c.env, c.var.calendar)).google) return c.json({ error: "plan_required" }, 402);
+  if (!(await entitlements(c.env, c.var.calendar)).googleBusy) return c.json({ error: "plan_required" }, 402);
   const cfg = googleConfig(c.env);
   if (!cfg) return c.json({ error: "not_configured" }, 503);
   await syncNow(c.env, cfg, c.var.calendar.id);
@@ -260,7 +260,7 @@ export async function googleConfirm(c: Context<AppEnv>) {
   const live = await liveState(c.env, state, Date.now());
   if (!live || !code) return EXPIRED();
   // Connecting is refused on Free, like the Connect button (the plan may have changed since it was pressed).
-  if (!(await entitlements(c.env, live.cal)).google) {
+  if (!(await entitlements(c.env, live.cal)).googleBusy) {
     return page(402, "Not connected", "Google Calendar sync is part of the paid plans. Go back to your calendar to see your plan.");
   }
   // One use only: whoever deletes the row first goes on.

@@ -151,8 +151,8 @@ export async function runGoogleJobs(env: Bindings, now: number): Promise<number>
     if (!claim.meta.changes) continue;
     handled++;
 
-    // Free plan: nothing goes to Google. Close the job so it doesn't retry.
-    if (!(await entitlementsFor(env, job.calendar_id, now)).google) {
+    // Free plan: nothing goes to Google. Close the job so it doesn't retry. (A paused client keeps pushing its existing bookings.)
+    if (!(await entitlementsFor(env, job.calendar_id, now)).googlePush) {
       await db.prepare("UPDATE jobs SET done_at = ?, result = 'skipped:plan' WHERE id = ?").bind(now, job.id).run();
       continue;
     }
