@@ -3,7 +3,9 @@ import { publicBase } from "../accounts/config";
 import { enqueueEmail } from "../email/outbox";
 import type { Bindings } from "../types";
 import { billingOn } from "./config";
-import { accountCalendars, homeCalendar } from "./store";
+import type { Plan } from "./config";
+import { isPaid } from "./entitlements";
+import { homeCalendar } from "./store";
 import { stripe } from "./stripe";
 import { applySubscription, droppedToFree, syncSubscription, type StripeSub } from "./sync";
 
@@ -21,15 +23,19 @@ async function graceEmail(env: Bindings, userId: string, kind: "email.account.gr
 export async function runBillingCron(env: Bindings, now: number): Promise<void> {
   if (!billingOn(env)) return;
   const db = env.DB;
-  const { results } = await db.prepare("SELECT user_id, grace_until, grace_checkin_sent, grace_reminder_sent FROM billing WHERE grace_until IS NOT NULL")
-    .all<{ user_id: string; grace_until: number; grace_checkin_sent: number; grace_reminder_sent: number }>();
+  const { results } = await db.prepare("SELECT user_id, plan, status, grace_until, grace_checkin_sent, grace_reminder_sent FROM billing WHERE grace_until IS NOT NULL")
+    .all<{ user_id: string; plan: Plan; status: string; grace_until: number; grace_checkin_sent: number; grace_reminder_sent: number }>();
   for (const g of results) {
     if (g.grace_until <= now) {
-      // Grace is over (entitlements already say Free); tidy the row and run the drop-to-Free side effects, in one
-      // batch. The side effects come first and only while grace_until is still this value, so they run once.
+      // Grace is over (entitlements already say so); tidy the row, and if the account really ends up Free run the
+      // drop-to-Free side effects on its own calendar. After White-label → Pro it stays Pro: nothing is dropped, and the
+      // clients pause through entitlements. One batch: the side effects come first and only while grace_until is still
+      // this value, so they run once.
       const still = "EXISTS (SELECT 1 FROM billing WHERE user_id = ? AND grace_until = ?)";
+      const home = await homeCalendar(db, g.user_id);
+      const free = !isPaid({ ...g, grace_until: null }, now);
       await db.batch([
-        ...droppedToFree(db, await accountCalendars(db, g.user_id), still, g.user_id, g.grace_until),
+        ...(free && home ? droppedToFree(db, [home], still, g.user_id, g.grace_until) : []),
         db.prepare("UPDATE billing SET grace_until = NULL, updated_at = ? WHERE user_id = ? AND grace_until = ?").bind(now, g.user_id, g.grace_until),
       ]);
       continue;

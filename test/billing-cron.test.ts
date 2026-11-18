@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { runBillingCron, isReconcileMinute } from "../src/worker/billing/cron";
+import { entitlementsFor } from "../src/worker/billing/entitlements";
 import { getBilling } from "../src/worker/billing/store";
 import { billingEnv, clientCalendar, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
 
@@ -81,5 +82,34 @@ describe("billing cron", () => {
   });
   it("does nothing when billing is off", async () => {
     await expect(runBillingCron(billingEnv({ STRIPE_SECRET_KEY: undefined }), Date.now())).resolves.toBeUndefined();
+  });
+  it("after a White-label → Pro grace the agency stays Pro (busy times kept) and its clients pause", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const now = Date.now();
+    await setBilling(env, a.userId, { plan: "pro", status: "active", grace_until: now + DAY, grace_subscription_id: "sub_wp", grace_checkin_sent: 1, grace_reminder_sent: 1 });
+    await env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'keep', 1, 2)").bind(a.calendarId).run();
+    await runBillingCron(env, now + 2 * DAY);
+    expect((await getBilling(env.DB, a.userId))!.grace_until).toBeNull();
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM google_busy WHERE calendar_id = ?").bind(a.calendarId).first<{ n: number }>())!.n).toBe(1);
+    expect(await entitlementsFor(env, a.calendarId, now + 2 * DAY)).toMatchObject({ plan: "pro", paused: false });
+    expect((await entitlementsFor(env, c.calendarId, now + 2 * DAY)).paused).toBe(true);
+  });
+
+  it("a White-label grace ending on Free runs the drop-to-Free effects on the agency's own calendar only", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const now = Date.now();
+    await setBilling(env, a.userId, { plan: "white_label", status: "canceled", grace_until: now + DAY, grace_subscription_id: "sub_wf", grace_checkin_sent: 1, grace_reminder_sent: 1 });
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'h', 1, 2)").bind(a.calendarId),
+      env.DB.prepare("INSERT INTO google_busy (calendar_id, google_event_id, start_at, end_at) VALUES (?, 'c', 1, 2)").bind(c.calendarId),
+    ]);
+    await runBillingCron(env, now + 2 * DAY);
+    const busy = async (id: string) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM google_busy WHERE calendar_id = ?").bind(id).first<{ n: number }>())!.n;
+    expect(await busy(a.calendarId)).toBe(0);
+    expect(await busy(c.calendarId)).toBe(1);
   });
 });
