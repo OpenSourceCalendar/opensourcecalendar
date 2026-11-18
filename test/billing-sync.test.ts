@@ -120,6 +120,14 @@ describe("syncSubscription", () => {
     expect(await getBilling(env.DB, a.userId)).toMatchObject({ grace_until: null, grace_checkin_sent: 0, grace_subscription_id: "sub_old", status: "active" });
   });
 
+  it("a cancel from the portal (cancel_at set, cancel_at_period_end false) shows as ending", async () => {
+    const { env, fake, a } = await setup();
+    const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_wl_month", status: "active" });
+    sub.cancel_at = sub.items.data[0].current_period_end;
+    await syncSubscription(env, a.userId, sub.id, Date.now());
+    expect(await getBilling(env.DB, a.userId)).toMatchObject({ status: "active", cancel_at_period_end: 1 });
+  });
+
   it("an unknown price still saves the status: a cancelled subscription on an old price ends paid access", async () => {
     const { env, fake, a } = await setup();
     const sub = fake.addSub({ customer: `cus_${a.userId}`, price: "price_pro_month", status: "active" });

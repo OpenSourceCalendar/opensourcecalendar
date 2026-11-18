@@ -25,7 +25,7 @@ export async function signStripe(secret: string, body: string, nowMs: number): P
 }
 
 export type FakeSub = {
-  id: string; customer: string; status: string; cancel_at_period_end: boolean; trial_end: number | null; created: number;
+  id: string; customer: string; status: string; cancel_at_period_end: boolean; cancel_at: number | null; trial_end: number | null; created: number;
   metadata: Record<string, string>; items: { data: { price: { id: string }; current_period_end: number }[] };
 };
 
@@ -40,7 +40,7 @@ export class FakeStripe {
   addSub(s: Partial<FakeSub> & { customer: string; price: string; status: string }): FakeSub {
     const id = s.id ?? `sub_${uniq()}_${++this.n}`; // unique across tests: they share one D1, and billing.stripe_subscription_id is UNIQUE
     const sub: FakeSub = {
-      id, customer: s.customer, status: s.status, cancel_at_period_end: s.cancel_at_period_end ?? false,
+      id, customer: s.customer, status: s.status, cancel_at_period_end: s.cancel_at_period_end ?? false, cancel_at: s.cancel_at ?? null,
       trial_end: s.trial_end ?? null, created: s.created ?? Math.floor(Date.now() / 1000) + this.n,
       metadata: s.metadata ?? {}, items: { data: [{ price: { id: s.price }, current_period_end: Math.floor(Date.now() / 1000) + 30 * 86400 }] },
     };

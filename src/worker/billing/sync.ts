@@ -11,7 +11,7 @@ import { googlePushMany } from "../google/push";
 export const GRACE_MS = 30 * 86_400_000;
 
 export type StripeSub = {
-  id: string; customer: string; status: string; cancel_at_period_end: boolean; trial_end: number | null; created: number;
+  id: string; customer: string; status: string; cancel_at_period_end: boolean; cancel_at: number | null; trial_end: number | null; created: number;
   metadata?: Record<string, string>;
   items: { data: { price: { id: string }; current_period_end: number }[] };
 };
@@ -110,7 +110,8 @@ export async function applySubscription(env: Bindings, userId: string, sub: Stri
          grace_checkin_sent = ?, grace_reminder_sent = ?, updated_at = ? WHERE user_id = ?`,
     ).bind(
       sub.customer, sub.id, plan, interval, sub.status, item ? item.current_period_end * 1000 : prev.current_period_end,
-      sub.cancel_at_period_end ? 1 : 0, sub.trial_end ? 1 : 0, sub.trial_end ? sub.trial_end * 1000 : null,
+      // The portal cancels by setting cancel_at (to the period end) and leaves cancel_at_period_end false.
+      sub.cancel_at_period_end || sub.cancel_at ? 1 : 0, sub.trial_end ? 1 : 0, sub.trial_end ? sub.trial_end * 1000 : null,
       graceUntil, graceSub, checkin, reminder, now, userId,
     ),
     ...(wasPaid && !nowPaid ? droppedToFree(db, cals) : []),
