@@ -38,6 +38,8 @@ export interface PublicCalendar {
   turnstile_site_key: string | null;
   branding: Branding;
   services: Service[];
+  /** A White-label client whose agency isn't on White-label: no online booking. */
+  paused: boolean;
   booking: {
     required_fields: Record<Field, boolean>;
     cancel_reason_required: boolean;
@@ -174,6 +176,8 @@ export function errorText(e: unknown): string {
       return "This appointment can no longer be changed.";
     case "not_found":
       return "We couldn't find that.";
+    case "booking_paused":
+      return "Online booking is paused. Please contact the business.";
     case "turnstile_failed":
       return "We couldn't verify you're not a robot. Please try the check again.";
     default:

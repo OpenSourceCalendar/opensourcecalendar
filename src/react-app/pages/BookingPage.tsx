@@ -73,6 +73,31 @@ export function BookingPage({ slug }: { slug: string }) {
   if (loadError) return loadError.status === 404 ? <NotFound /> : <ErrorScreen message={errorText(loadError)} />;
   if (!cal) return <LoadingScreen />;
 
+  if (cal.paused) {
+    const phone = cal.branding.phone;
+    return (
+      <div className="page" data-style={cal.branding.style}>
+        <div className="sheet">
+          <Header branding={cal.branding}>
+            <h1 className="title">Online booking is paused</h1>
+          </Header>
+          <main className="content">
+            <p className="lede">
+              {phone ? (
+                <>
+                  Please call us at <a href={`tel:${phone.replace(/[^\d+]/g, "")}`}>{phone}</a>.
+                </>
+              ) : (
+                "Please contact the business."
+              )}
+            </p>
+          </main>
+          <PoweredBy show={cal.booking.powered_by} />
+        </div>
+      </div>
+    );
+  }
+
   const service = cal.services.find((s) => s.id === serviceId) ?? null;
   const required = { ...cal.booking.required_fields, first_name: true };
   const labels = cal.services.length > 1 ? ["Service", "Date & Time", "Info"] : ["Date & Time", "Info"];
