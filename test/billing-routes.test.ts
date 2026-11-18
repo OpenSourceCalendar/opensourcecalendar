@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { app } from "../src/worker/index";
 import { getBilling } from "../src/worker/billing/store";
-import { billingEnv, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
+import { adminCall, billingEnv, clientCalendar, FakeStripe, hostedAccount, setBilling } from "./stripe-fake";
 
 afterEach(() => vi.restoreAllMocks());
 const BASE = "https://book.example.test/api/admin/billing";
@@ -9,6 +9,24 @@ const post = (env: ReturnType<typeof billingEnv>, token: string, path: string, j
   app.request(`${BASE}${path}`, { method: "POST", headers: { Authorization: `Session ${token}`, "Content-Type": "application/json" }, body: json === undefined ? undefined : JSON.stringify(json) }, env);
 
 describe("GET /billing", () => {
+  it("always shows the agency's own numbers, whatever X-Client says", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const svc = `svc_${crypto.randomUUID()}`;
+    const cus = `cus_${crypto.randomUUID()}`;
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO services (id, calendar_id, name, duration_min, color, location_type, created_at) VALUES (?, ?, 'Call', 30, '#2d6a4f', 'business', 0)").bind(svc, c.calendarId),
+      env.DB.prepare("INSERT INTO customers (id, calendar_id, first_name, created_at) VALUES (?, ?, 'Ann', 0)").bind(cus, c.calendarId),
+      env.DB.prepare(`INSERT INTO appointments (id, calendar_id, service_id, customer_id, start_at, end_at, status, source, manage_token_hash, created_at, updated_at, contact_first_name)
+        VALUES (?, ?, ?, ?, ?, ?, 'booked', 'booking_page', ?, ?, ?, 'Ann')`).bind(`apt_${cus}`, c.calendarId, svc, cus, now + 86_400_000, now + 88_200_000, `h_${cus}`, now, now),
+    ]);
+    const res = await adminCall(env, a.token, "/billing", { client: c.calendarId });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ enabled: true, bookings_this_month: 0 });
+  });
+
   it("billing off: { enabled: false }", async () => {
     const env = billingEnv();
     const a = await hostedAccount(env);

@@ -3,11 +3,11 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { publicBase } from "../accounts/config";
-import { HOSTED_APP, requireCalendar } from "../auth";
+import { HOSTED_APP } from "../auth";
 import { billingOn, priceFor } from "../billing/config";
 import { FREE_MONTHLY_EMAIL_BOOKINGS, isPaid, LIVE_STATUSES } from "../billing/entitlements";
 import { bookingsThisMonth } from "../billing/limit";
-import { billingByCustomer, ensureBillingRow, getBilling, userEmail } from "../billing/store";
+import { billingByCustomer, ensureBillingRow, getBilling, homeCalendar, userEmail } from "../billing/store";
 import { stripe, StripeError, verifyStripeSignature } from "../billing/stripe";
 import { sendOperatorEmail } from "../billing/emails";
 import { syncSubscription } from "../billing/sync";
@@ -28,8 +28,11 @@ billing.use("*", async (c, next) => {
   await next();
 });
 
-billing.get("/", requireCalendar, async (c) => {
+billing.get("/", async (c) => {
   const now = Date.now();
+  // Always the agency's own calendar: X-Client never changes what the Plan page shows.
+  const home = await homeCalendar(c.env.DB, c.var.userId);
+  if (!home) return c.json({ error: "calendar_not_found" }, 404);
   const row = await getBilling(c.env.DB, c.var.userId);
   const paid = isPaid(row, now);
   return c.json({
@@ -44,7 +47,7 @@ billing.get("/", requireCalendar, async (c) => {
     cancel_at_period_end: !!row?.cancel_at_period_end,
     grace_until: row?.grace_until && row.grace_until > now ? new Date(row.grace_until).toISOString() : null,
     has_customer: !!row?.stripe_customer_id,
-    bookings_this_month: await bookingsThisMonth(c.env.DB, c.var.calendar, now),
+    bookings_this_month: await bookingsThisMonth(c.env.DB, home, now),
     monthly_limit: paid ? null : FREE_MONTHLY_EMAIL_BOOKINGS,
   });
 });

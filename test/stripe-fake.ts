@@ -113,6 +113,16 @@ export async function hostedAccount(env: typeof testEnv) {
   return { userId, token, calendarId: id, slug };
 }
 
+/** An owner API call as a hosted account; `client` sends X-Client to act on one of its clients. */
+export function adminCall(env: typeof testEnv, token: string, path: string, init: { method?: string; json?: unknown; client?: string } = {}) {
+  const headers: Record<string, string> = { Authorization: `Session ${token}` };
+  if (init.client) headers["X-Client"] = init.client;
+  if (init.json !== undefined) headers["Content-Type"] = "application/json";
+  return app.request(`https://book.example.test/api/admin${path}`, {
+    method: init.method ?? "GET", headers, body: init.json === undefined ? undefined : JSON.stringify(init.json),
+  }, env);
+}
+
 /** A client calendar of a hosted account, straight in the table (POST /clients itself is tested in clients.test.ts). */
 export async function clientCalendar(env: typeof testEnv, userId: string, createdAt = Date.now()) {
   const id = `cal_${uniq()}`;

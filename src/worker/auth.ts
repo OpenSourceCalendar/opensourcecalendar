@@ -63,11 +63,18 @@ export const requireApp = createMiddleware<AppEnv>(async (c, next) => {
   await next();
 });
 
-/** Loads the calendar owned by (app, user). Never trusts a calendar id from the request. */
+/**
+ * Loads the calendar owned by (app, user). Never trusts a calendar id from the request, with one exception: a hosted
+ * account's X-Client header picks one of that same account's calendars (anything else is 404, the same answer whether
+ * it doesn't exist or isn't theirs). API-key apps, host-app sessions and standalone installs never read the header.
+ */
 export const requireCalendar = createMiddleware<AppEnv>(async (c, next) => {
-  const row = await c.env.DB.prepare("SELECT * FROM calendars WHERE app_id = ? AND external_user_id = ?")
-    .bind(c.var.app.id, c.var.userId)
-    .first<CalendarRow>();
+  const client = c.var.app.id === HOSTED_APP ? c.req.header("X-Client") : undefined;
+  const row = client
+    ? await c.env.DB.prepare("SELECT * FROM calendars WHERE id = ? AND app_id = ? AND account_user_id = ?")
+        .bind(client, HOSTED_APP, c.var.userId).first<CalendarRow>()
+    : await c.env.DB.prepare("SELECT * FROM calendars WHERE app_id = ? AND external_user_id = ?")
+        .bind(c.var.app.id, c.var.userId).first<CalendarRow>();
   if (!row) return c.json({ error: "calendar_not_found" }, 404);
   c.set("calendar", row);
   await next();
