@@ -33,7 +33,8 @@ export function Google({
   google,
   onGoogle,
   billing,
-}: PageProps & { google: GoogleStatus | null; onGoogle: (g: GoogleStatus) => void; billing: BillingInfo | null }) {
+  paused,
+}: PageProps & { google: GoogleStatus | null; onGoogle: (g: GoogleStatus) => void; billing: BillingInfo | null; paused: boolean }) {
   const [waiting, setWaiting] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "connect" | "sync" | "allday" | "calendar" | "disconnect">("");
@@ -118,8 +119,8 @@ export function Google({
       if (active) onGoogle(await adminApi.syncGoogle());
     }, () => notify({ text: "Saved" }));
 
-  // On Free, sync is paused and connecting is refused, so the connect buttons become a way to the Plan page.
-  const free = onFree(billing);
+  // On Free, or for a paused client, busy sync is off and connecting is refused, so the connect buttons lead to the Plan page.
+  const free = onFree(billing) || paused;
   const toPlan = (
     <button type="button" className="btn btn-primary btn-auto" onClick={() => navigate("/admin/plan")}>
       See plans

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { applyBrand } from "../theme";
-import { adminApi, setUnauthorizedHandler, type AdminCalendar, type BillingInfo, type Customer, type GoogleStatus } from "./api";
+import { adminApi, canAddClients, onWhiteLabel, setUnauthorizedHandler, type AdminCalendar, type BillingInfo, type ClientList, type Customer, type GoogleStatus } from "./api";
+import { AddClient } from "./AddClient";
 import { Availability } from "./Availability";
 import { Branding } from "./Branding";
+import { ClientPicker } from "./ClientPicker";
 import { CustomerPage } from "./CustomerPage";
 import { Customers } from "./Customers";
 import { Dashboard } from "./Dashboard";
@@ -62,8 +64,8 @@ export function AdminApp() {
   // Bumped whenever New Entry saves, so the screen behind refetches.
   const [saves, setSaves] = useState(0);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // Where the owner was heading when the leave guard stopped them: a path, or signing out.
-  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | null>(null);
+  // Where the owner was heading when the leave guard stopped them: a path, another business, or signing out.
+  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | { client: string } | null>(null);
   const dirty = useRef(false);
   const shownPath = useRef(path);
   shownPath.current = path;
@@ -191,6 +193,16 @@ export function AdminApp() {
     if (calendarId) loadBilling();
   }, [calendarId, loadBilling]);
 
+  // The account's businesses, for the White-label picker (hosted accounts only; others get a 404 and no picker).
+  // Reloaded when another business opens or this one's name changes.
+  const [clients, setClients] = useState<ClientList | null>(null);
+  const [adding, setAdding] = useState(false);
+  const businessName = calendar?.branding.business_name;
+  useEffect(() => {
+    if (!calendarId) return;
+    adminApi.clients().then(setClients, () => setClients(null));
+  }, [calendarId, businessName]);
+
   const onGooglePage = path === "/admin/google";
   const wasOnGooglePage = useRef(false);
   useEffect(() => {
@@ -214,6 +226,22 @@ export function AdminApp() {
     dirty.current = false;
     setEntry(null);
     setState({ kind: "signed-out", ended: false });
+  }
+
+  /** Open another business: its own screens, from its dashboard (or `to`). The agency's own is stored as "no client". */
+  function switchClient(id: string, to = "/admin") {
+    setClientId(clients?.calendars.find((x) => x.id === id)?.home ? null : id);
+    setEntry(null);
+    setLeaveTo(null);
+    dirty.current = false;
+    go(to);
+    void load();
+  }
+
+  function pickClient(id: string) {
+    if (id === calendar?.id) return;
+    if (dirty.current) setLeaveTo({ client: id });
+    else switchClient(id);
   }
 
   const toastEl = <Toast toast={toast} onClose={closeToast} />;
@@ -260,9 +288,29 @@ export function AdminApp() {
   };
   const customerId = path.startsWith("/admin/customers/") ? decodeURIComponent(path.slice("/admin/customers/".length)) : null;
   const known = NAV.find((n) => n.path === path);
+  const shown = clients?.calendars.find((x) => x.id === state.calendar.id);
+  const paused = !!shown?.paused;
+  const client = !!shown && !shown.home;
+  // Shown once there's more than one business, or when the plan can add one.
+  const picker =
+    clients && (clients.calendars.length > 1 || canAddClients(billing)) ? (
+      <ClientPicker clients={clients} currentId={state.calendar.id} onPick={pickClient} onAdd={canAddClients(billing) ? () => setAdding(true) : null} />
+    ) : null;
 
   return (
-    <Shell calendar={state.calendar} google={google} billing={billing} path={path} navigate={navigate} onNewEntry={() => setEntry({})} onSignOut={signOut}>
+    <Shell
+      key={state.calendar.id}
+      calendar={state.calendar}
+      google={google}
+      billing={billing}
+      path={path}
+      navigate={navigate}
+      onNewEntry={() => setEntry({})}
+      onSignOut={signOut}
+      client={client}
+      paused={paused}
+      picker={picker}
+    >
       {path === "/admin" ? (
         <Dashboard calendar={state.calendar} reloadKey={saves} navigate={navigate} onNewEntry={() => setEntry({})} />
       ) : path === "/admin/schedule" ? (
@@ -276,15 +324,15 @@ export function AdminApp() {
       ) : customerId ? (
         <CustomerPage key={customerId} {...page} id={customerId} reloadKey={saves} onBook={(customer) => setEntry({ customer })} />
       ) : path === "/admin/notifications" ? (
-        <Notifications {...page} billing={billing} />
+        <Notifications {...page} billing={billing} paused={paused} />
       ) : path === "/admin/branding" ? (
-        <Branding {...page} billing={billing} />
+        <Branding {...page} billing={billing} footerHidden={onWhiteLabel(billing) || paused} />
       ) : path === "/admin/share" ? (
         <Share {...page} />
       ) : path === "/admin/google" ? (
-        <Google {...page} google={google} onGoogle={setGoogle} billing={billing} />
+        <Google {...page} google={google} onGoogle={setGoogle} billing={billing} paused={paused} />
       ) : path === "/admin/plan" && billing?.enabled ? (
-        <Plan billing={billing} reload={loadBilling} />
+        <Plan billing={billing} reload={loadBilling} clients={clients} />
       ) : path === "/admin/plan" && !billing ? null : known ? (
         <ComingSoon title={known.label} />
       ) : (
@@ -306,6 +354,17 @@ export function AdminApp() {
           onCreated={() => setSaves((n) => n + 1)}
         />
       )}
+      {adding && (
+        <AddClient
+          zone={clients?.calendars.find((x) => x.home)?.time_zone ?? state.calendar.time_zone}
+          onClose={() => setAdding(false)}
+          onAdded={(created) => {
+            setAdding(false);
+            setToast({ text: `Added ${created.branding.business_name}. Set up its services and hours.` });
+            switchClient(created.id, "/admin/services");
+          }}
+        />
+      )}
       {leaveTo && (
         <Dialog kind="modal" title="Leave without saving?" onClose={() => setLeaveTo(null)}>
           <p className="lede">Your changes on this page haven't been saved.</p>
@@ -321,6 +380,7 @@ export function AdminApp() {
                 setLeaveTo(null);
                 dirty.current = false;
                 if (to === SIGN_OUT) leave();
+                else if (typeof to === "object") switchClient(to.client);
                 else go(to);
               }}
             >

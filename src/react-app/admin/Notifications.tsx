@@ -10,7 +10,7 @@ const MAX_MESSAGE = 160;
 const FILL_INS = ["Business Name", "Date", "Time", "Service"] as const;
 const HOURS: number[] = [1, 2, 3, 6, 12, 24, 48];
 
-export function Notifications({ calendar, notify, setDirty, onCalendar, billing }: PageProps & { billing: BillingInfo | null }) {
+export function Notifications({ calendar, notify, setDirty, onCalendar, billing, paused }: PageProps & { billing: BillingInfo | null; paused: boolean }) {
   const saved = calendar.notifications;
   const [form, setForm] = useState<Settings>(saved);
   const [saving, setSaving] = useState(false);
@@ -195,7 +195,7 @@ export function Notifications({ calendar, notify, setDirty, onCalendar, billing 
         <Setting title="Send a reminder" help="An email to the customer before their appointment.">
           <Switch checked={form.reminder} label="Send a reminder" onChange={(on) => set("reminder", on)} />
         </Setting>
-        {onFree(billing) && <p className="hint">Reminders are included in Pro.</p>}
+        {onFree(billing) && !paused && <p className="hint">Reminders are included in Pro.</p>}
         {form.reminder && (
           <fieldset className="fieldset nt-timing">
             <legend className="label">When</legend>

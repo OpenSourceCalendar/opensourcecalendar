@@ -7,13 +7,13 @@ import { cleanSlug, SLUG_HINT, SLUG_RE, useSlugCheck } from "./slug";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Hosted accounts start with a working booking page; the owner changes both later.
-const DEFAULT_WEEK: WeeklyDay[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, open: weekday >= 1 && weekday <= 5, start_min: 540, end_min: 1020, breaks: [] }));
-const FIRST_SERVICE: ServiceInput = {
+export const DEFAULT_WEEK: WeeklyDay[] = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, open: weekday >= 1 && weekday <= 5, start_min: 540, end_min: 1020, breaks: [] }));
+export const FIRST_SERVICE: ServiceInput = {
   name: "Consultation", description: "", duration_min: 30, price_cents: 0, color: "#4f46e5",
   location_type: "phone", location_text: "", hidden: false, is_call_default: false,
 };
 
-const slugify = (name: string) =>
+export const slugify = (name: string) =>
   name
     .toLowerCase()
     .normalize("NFKD")

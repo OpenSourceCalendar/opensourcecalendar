@@ -2237,3 +2237,13 @@ a.status-link.is-warn {
     padding: 10px 16px;
   }
 }
+
+/* White-label: which business the menu is for. */
+.client-picker {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px 12px;
+}
+.client-picker .link {
+  justify-self: start;
+}

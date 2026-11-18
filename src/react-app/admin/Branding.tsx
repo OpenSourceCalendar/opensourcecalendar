@@ -30,12 +30,14 @@ const LIMITS = { logo: 2, hero: 5 }; // MB
 
 type Kind = "logo" | "hero";
 
-export function Branding({ calendar, notify, setDirty, onCalendar, billing }: PageProps & { billing: BillingInfo | null }) {
+export function Branding({ calendar, notify, setDirty, onCalendar, billing, footerHidden }: PageProps & { billing: BillingInfo | null; footerHidden: boolean }) {
   const b = calendar.branding;
-  // On Free the footer always shows (the server adds it), so the box shows that without changing the saved setting.
-  const forcedFooter = onFree(billing);
+  // White-label (or a paused client): the server never shows the footer. On Free it always does.
+  const hiddenFooter = footerHidden;
+  const forcedFooter = !hiddenFooter && onFree(billing);
   const savedForm = { business_name: b.business_name, phone: b.phone, tagline: b.tagline, color: b.color, style: b.style, powered_by: calendar.rules.powered_by };
   const [form, setForm] = useState(savedForm);
+  const showFooter = !hiddenFooter && (forcedFooter || form.powered_by);
   const [hexText, setHexText] = useState(b.color);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -202,10 +204,11 @@ export function Branding({ calendar, notify, setDirty, onCalendar, billing }: Pa
 
           <section className="card">
             <label className="check-row">
-              <input type="checkbox" checked={forcedFooter || form.powered_by} disabled={forcedFooter} onChange={(e) => set("powered_by", e.target.checked)} />
+              <input type="checkbox" checked={showFooter} disabled={forcedFooter || hiddenFooter} onChange={(e) => set("powered_by", e.target.checked)} />
               Show "Powered by Open Source Calendar" at the bottom
             </label>
             {forcedFooter && <p className="hint">Pro removes the footer.</p>}
+            {hiddenFooter && <p className="hint">Hidden on White-label.</p>}
           </section>
           <p className="muted small">Save to update your live booking page.</p>
         </div>
@@ -220,7 +223,7 @@ export function Branding({ calendar, notify, setDirty, onCalendar, billing }: Pa
             <div className="content">
               {services.length ? <ServiceList services={services.slice(0, 3)} selectedId={null} onSelect={() => {}} /> : <p className="muted">Your services will show here.</p>}
             </div>
-            <PoweredBy show={forcedFooter || form.powered_by} />
+            <PoweredBy show={showFooter} />
           </div>
         </aside>
       </div>

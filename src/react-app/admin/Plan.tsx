@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
-import { adminApi, adminErrorText, type BillingInfo } from "./api";
+import { adminApi, adminErrorText, type BillingInfo, type ClientList } from "./api";
 
 const PLANS = [
   { id: "pro" as const, name: "Pro", month: 10, year: 100, items: ["Unlimited staff calendars", "Google Calendar sync", "Reminder emails", "No footer"] },
-  { id: "white_label" as const, name: "White-label", month: 50, year: 500, items: ["Unlimited client businesses", "Your agency's brand only", "An address per client", "Everything in Pro"] },
+  { id: "white_label" as const, name: "White-label", month: 50, year: 500, items: ["Add up to 50 client businesses", "Your agency's brand only", "An address per client", "Everything in Pro"] },
 ];
 const NAME = { free: "Free", pro: "Pro", white_label: "White-label" } as const;
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
-export function Plan({ billing, reload }: { billing: Extract<BillingInfo, { enabled: true }>; reload: () => void }) {
+export function Plan({ billing, reload, clients }: { billing: Extract<BillingInfo, { enabled: true }>; reload: () => void; clients: ClientList | null }) {
   const [interval, setInterval_] = useState<"month" | "year">("month");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const justPaid = new URLSearchParams(window.location.search).get("checkout") === "done";
   // Grace counts as paid, so a resubscribe from the grace month also waits for the webhook.
   const waiting = justPaid && (!billing.paid || !!billing.grace_until);
+  const others = clients?.calendars.filter((c) => !c.home) ?? [];
+  const pausedNames = others.filter((c) => c.paused).map((c) => c.business_name || c.slug);
 
   // Back from Stripe: the webhook usually lands within seconds; check every 3 s for up to a minute.
   useEffect(() => {
@@ -88,11 +90,24 @@ export function Plan({ billing, reload }: { billing: Extract<BillingInfo, { enab
           {error}
         </p>
       )}
+      {!billing.grace_until && pausedNames.length > 0 && (
+        <section className="card plan-now">
+          <h2 className="card-title">Paused clients</h2>
+          <p>{pausedNames.join(", ")}: online booking is off. Subscribe to White-label to turn it back on.</p>
+        </section>
+      )}
       {billing.grace_until ? (
         <>
           <section className="card plan-now">
             <h2 className="card-title">White-label has ended</h2>
             <p>Your clients' calendars keep running until {day(billing.grace_until)}. Subscribe to keep everything on.</p>
+            {others.length > 0 && <p className="muted small">Pausing then: {others.map((c) => c.business_name || c.slug).join(", ")}.</p>}
+            {/* A live plan during grace (Pro after a White-label → Pro switch) is changed in the portal, e.g. back to White-label. */}
+            {billing.has_customer && ["trialing", "active", "past_due"].includes(billing.status) && (
+              <button type="button" className="btn btn-secondary btn-auto" disabled={busy !== null} onClick={() => go(adminApi.billingPortal, "portal")}>
+                {busy === "portal" ? "Opening…" : "Manage billing"}
+              </button>
+            )}
           </section>
           {planCards}
         </>
@@ -112,6 +127,11 @@ export function Plan({ billing, reload }: { billing: Extract<BillingInfo, { enab
           {(billing.status === "active" || billing.status === "past_due") && billing.current_period_end && (
             <p>
               {billing.cancel_at_period_end ? "Ends" : "Renews"} {day(billing.current_period_end)}.
+            </p>
+          )}
+          {billing.plan === "white_label" && clients && (
+            <p>
+              Clients: {clients.count} of {clients.limit}
             </p>
           )}
           {billing.has_customer && (

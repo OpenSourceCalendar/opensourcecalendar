@@ -27,6 +27,9 @@ export function Shell({
   navigate,
   onNewEntry,
   onSignOut,
+  client,
+  paused,
+  picker,
   children,
 }: {
   calendar: AdminCalendar;
@@ -38,6 +41,12 @@ export function Shell({
   navigate: (path: string) => void;
   onNewEntry: () => void;
   onSignOut: () => void;
+  /** This calendar is a White-label client's (not the agency's own). */
+  client: boolean;
+  /** This calendar is a paused White-label client. */
+  paused: boolean;
+  /** The White-label client picker, or null. */
+  picker: ReactNode;
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -103,6 +112,7 @@ export function Shell({
             <Icon name="close" />
           </button>
         </div>
+        {picker}
 
         <nav className="admin-nav" aria-label="Calendar">
           {nav.map((item) => (
@@ -155,7 +165,7 @@ export function Shell({
       </aside>
 
       <main className="admin-main">
-        <Banners billing={billing} navigate={navigate} />
+        <Banners billing={billing} client={client} paused={paused} navigate={navigate} />
         <div className="admin-main-inner">{children}</div>
       </main>
     </div>
