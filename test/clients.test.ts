@@ -180,3 +180,16 @@ describe("GET /clients", () => {
     expect(await json<Listed>(await adminCall(env, a.token, "/clients"))).toMatchObject({ count: 1, calendars: [{ id: a.calendarId, home: true }] });
   });
 });
+
+describe("PATCH /calendar on a client", () => {
+  it("refuses an empty business name (emails go out under it); the agency's own calendar may clear its name", async () => {
+    const env = billingEnv();
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    const c = await addClient(env, a.token);
+    const res = await adminCall(env, a.token, "/calendar", { method: "PATCH", json: { branding: { business_name: "  " } }, client: c.calendarId });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_input", missing: ["business_name"] });
+    expect((await adminCall(env, a.token, "/calendar", { method: "PATCH", json: { branding: { business_name: "" } } })).status).toBe(200);
+  });
+});

@@ -6,6 +6,7 @@ import { isTimeZone, parseBody } from "../lib/http";
 import { imageUrl } from "./images";
 import { mergeBranding, mergeNotifications, mergeRules, parseBranding, parseNotifications, parseRules } from "../settings";
 import { emailEnabled } from "../email/send";
+import { isClient } from "../billing/store";
 import type { AppEnv, Bindings, CalendarRow } from "../types";
 
 const RESERVED = new Set(["admin", "api", "app", "book", "m", "manage", "health", "images", "setup", "static", "assets", "www"]);
@@ -125,6 +126,10 @@ calendar.patch("/", requireCalendar, async (c) => {
     const merged = mergeFn(cal[field], patch);
     if (!merged.success) return c.json({ error: "invalid_input", issues: merged.error.issues }, 400);
     next[field] = JSON.stringify(merged.data);
+  }
+  // A client's emails are sent under its business name; empty would fall back to "Open Source Calendar".
+  if (isClient(cal) && !parseBranding(next.branding).business_name.trim()) {
+    return c.json({ error: "invalid_input", missing: ["business_name"] }, 400);
   }
 
   try {
