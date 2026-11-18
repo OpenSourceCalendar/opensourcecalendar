@@ -1,7 +1,7 @@
 // Typed helpers for the owner API (/api/admin/*). Every failure is thrown as an ApiError.
 
 import { ApiError, type Branding, type Field } from "../api";
-import { clearToken, getToken } from "./session";
+import { clearToken, getClientId, getToken } from "./session";
 
 /** Booking rules; mirrors RulesSchema on the server. */
 export interface Rules {
@@ -56,7 +56,12 @@ async function request<T>(path: string, init?: { method?: string; json?: unknown
   if (init?.json !== undefined) headers["Content-Type"] = "application/json";
   const auth = init?.auth !== false;
   const sent = getToken();
-  if (auth) headers.Authorization = `Session ${sent ?? ""}`;
+  if (auth) {
+    headers.Authorization = `Session ${sent ?? ""}`;
+    // White-label: which client business this call is about (this tab's choice). The server only reads it for hosted accounts.
+    const client = getClientId();
+    if (client) headers["X-Client"] = client;
+  }
   let res: Response;
   try {
     res = await fetch(`/api/admin${path}`, {
@@ -278,6 +283,12 @@ export function adminErrorText(e: unknown): string {
       return "Too many tries. Please wait an hour and try again.";
     case "stripe_unavailable":
       return "Couldn't reach the payment service. Try again in a minute.";
+    case "client_limit":
+      return "You've reached your client limit. Contact us to add more.";
+    case "white_label_required":
+      return "Adding clients is part of White-label.";
+    case "plan_required":
+      return "Google Calendar sync isn't on for this business's plan.";
     case "network":
       return "We couldn't reach the server. Check your connection and try again.";
     case "unauthorized":
@@ -358,6 +369,9 @@ export const adminApi = {
   checkout: (plan: "pro" | "white_label", interval: "month" | "year") =>
     request<{ url: string }>("/billing/checkout", { method: "POST", json: { plan, interval } }),
   billingPortal: () => request<{ url: string }>("/billing/portal", { method: "POST" }),
+  clients: () => request<ClientList>("/clients"),
+  addClient: (input: { business_name: string; slug: string; time_zone: string; owner_email: string }) =>
+    request<AdminCalendar>("/clients", { method: "POST", json: input }),
 };
 
 /** The account's plan, as GET /billing reports it. `enabled: false` when billing is off (self-hosted, or not a hosted account). */
@@ -381,6 +395,20 @@ export type BillingInfo =
 
 /** True when billing is on and the account is on Free, so paid features show a note instead. */
 export const onFree = (b: BillingInfo | null): boolean => b?.enabled === true && !b.paid;
+
+/** White-label is on (paid, a trial, or a grace month): no footer on any of the account's calendars. */
+export const onWhiteLabel = (b: BillingInfo | null): boolean => b?.enabled === true && b.paid && (b.plan === "white_label" || !!b.grace_until);
+
+/** Paid White-label, a trial included (a grace month adds no clients). Mirrors the server's canAddClients. */
+export const canAddClients = (b: BillingInfo | null): boolean => b?.enabled === true && b.paid && b.plan === "white_label" && !b.grace_until;
+
+/** A hosted account's businesses (GET /clients): its own calendar, then its clients. */
+export interface ClientList {
+  calendars: { id: string; business_name: string; slug: string; time_zone: string; home: boolean; paused: boolean }[];
+  /** Most calendars allowed, the agency's own included. */
+  limit: number;
+  count: number;
+}
 
 /** The Google Calendar connection, as the server reports it. Never holds tokens. */
 export interface GoogleStatus {

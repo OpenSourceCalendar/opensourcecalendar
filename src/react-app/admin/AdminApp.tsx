@@ -13,7 +13,7 @@ import { Schedule } from "./Schedule";
 import { Notifications } from "./Notifications";
 import { Plan } from "./Plan";
 import { Services } from "./Services";
-import { captureSessionFromUrl, clearToken, getToken, lastCalendarId, setLastCalendarId } from "./session";
+import { captureSessionFromUrl, clearToken, getClientId, getToken, lastCalendarId, setClientId, setLastCalendarId } from "./session";
 import { Setup } from "./Setup";
 import { Share } from "./Share";
 import { ComingSoon, NAV, Shell } from "./Shell";
@@ -41,6 +41,17 @@ export interface PageProps {
 }
 
 const SIGN_OUT = Symbol("sign out");
+
+/** The chosen business's calendar. A stored client that's gone or isn't this account's falls back to the agency's own. */
+async function loadCalendar(): Promise<AdminCalendar> {
+  try {
+    return await adminApi.calendar();
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 404 || !getClientId()) throw e;
+    setClientId(null);
+    return adminApi.calendar();
+  }
+}
 
 const cleanPath = () => window.location.pathname.replace(/\/+$/, "") || "/admin";
 
@@ -89,7 +100,7 @@ export function AdminApp() {
     // A fresh link while the calendar is open reloads quietly, so nothing being typed is lost unless the business changes.
     if (!ready.current) setState({ kind: "loading" });
     try {
-      const calendar = await adminApi.calendar();
+      const calendar = await loadCalendar();
       if (turn !== loads.current) return; // a newer link has taken over
       const before = lastCalendarId();
       if (fromLink.current && before && before !== calendar.id) {

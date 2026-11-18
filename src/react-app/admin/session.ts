@@ -8,6 +8,7 @@ const MODE = "bc_admin_mode";
 const CALENDAR = "bc_admin_calendar";
 /** Survives sign-out and expiry, so the signed-out screen knows to offer Log in. */
 const LAST_LOGIN = "bc_last_login";
+const CLIENT = "bc_admin_client";
 
 // Fallback for browsers that block storage inside a third-party iframe: lasts until the tab reloads.
 const memory: Record<string, string | null> = {};
@@ -28,6 +29,10 @@ function writeLocal(key: string, value: string | null): void {
     memory[key] = value; // storage blocked: the session lasts for this page only
   }
 }
+
+// The business this tab works on, read from localStorage once at startup. Requests read only this variable, so another
+// tab picking a different business can't silently send this tab's saves to it. A new tab starts from the last choice.
+let activeClient: string | null = readLocal(CLIENT);
 
 function read(key: string): string | null {
   if (memory[key]) return memory[key];
@@ -86,6 +91,9 @@ export function clearToken(): void {
   write(CALENDAR, null);
   writeLocal(TOKEN, null);
   writeLocal(MODE, null);
+  // A different account may sign in next.
+  activeClient = null;
+  writeLocal(CLIENT, null);
 }
 
 /** Password and hosted sign-ins get a Sign out button; a host app has its own. */
@@ -97,3 +105,11 @@ export const lastLoginWasHosted = () => readLocal(LAST_LOGIN) === "hosted";
 /** The calendar this tab last showed, to notice when a new sign-in link switches to another one. */
 export const lastCalendarId = () => read(CALENDAR);
 export const setLastCalendarId = (id: string) => write(CALENDAR, id);
+
+/** The client business this tab is working on; null = the agency's own calendar. */
+export const getClientId = () => activeClient;
+/** Changes this tab's business and remembers it for the next tab or reload. */
+export function setClientId(id: string | null): void {
+  activeClient = id;
+  writeLocal(CLIENT, id);
+}
