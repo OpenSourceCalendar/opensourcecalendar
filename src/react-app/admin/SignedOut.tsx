@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ApiError } from "../api";
+import { accountApi, ApiError } from "../api";
 import { adminApi } from "./api";
 import { lastLoginWasHosted, loginPage, setToken } from "./session";
 
@@ -17,10 +17,15 @@ export function SignedOut({ ended, onSignedIn }: { ended: boolean; onSignedIn: (
     // Hosted accounts log in on /login; the token was already cleared, so this flag is what remembers it.
     if (lastLoginWasHosted()) return setMode("hosted");
     let live = true;
-    // An empty password is always refused: 401 means password login exists, 404 means it doesn't.
-    adminApi.login("").then(
-      () => live && setMode("password"),
-      (e) => live && setMode(e instanceof ApiError && e.status === 404 ? "host" : "password"),
+    // A fresh browser on a hosted install (accounts on): send it to /login, never to the standalone password box.
+    accountApi.config().then(
+      () => live && setMode("hosted"),
+      () =>
+        // An empty password is always refused: 401 means password login exists, 404 means it doesn't.
+        adminApi.login("").then(
+          () => live && setMode("password"),
+          (e) => live && setMode(e instanceof ApiError && e.status === 404 ? "host" : "password"),
+        ),
     );
     return () => {
       live = false;

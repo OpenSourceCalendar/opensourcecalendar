@@ -2239,16 +2239,18 @@ a.status-link.is-warn {
 }
 
 /* White-label: a client's calendar is open, and the way back to the Clients page. */
+/* Fixed orange (not the brand colour), so working inside a client's calendar always stands out. White on #c2410c is 5.2:1. */
 .viewing-bar {
   padding: 10px 40px;
-  background: var(--brand-wash);
-  color: var(--brand-ink);
+  background: #c2410c;
+  color: #fff;
   font-size: 14px;
-  border-bottom: 1px solid var(--brand-line);
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 .viewing-bar .link {
   color: inherit;
+  text-decoration: underline;
 }
 @media (max-width: 859px) {
   .viewing-bar {

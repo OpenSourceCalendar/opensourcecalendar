@@ -38,6 +38,9 @@ export function Plan({ billing, reload, clients }: { billing: Extract<BillingInf
     }
   }
 
+  // A live plan during grace (Pro after a White-label → Pro switch) is changed in the portal, e.g. back to White-label.
+  const liveInGrace = billing.has_customer && ["trialing", "active", "past_due"].includes(billing.status);
+
   // The Monthly/Yearly switch and the two plan cards, shown on Free and during the White-label grace month.
   const planCards = (
     <>
@@ -100,16 +103,16 @@ export function Plan({ billing, reload, clients }: { billing: Extract<BillingInf
         <>
           <section className="card plan-now">
             <h2 className="card-title">White-label has ended</h2>
-            <p>Your clients' calendars keep running until {day(billing.grace_until)}. Subscribe to keep everything on.</p>
+            <p>Your clients' calendars keep running until {day(billing.grace_until)}. {liveInGrace ? "Switch back to White-label in Manage billing" : "Subscribe"} to keep everything on.</p>
             {others.length > 0 && <p className="muted small">Pausing then: {others.map((c) => c.business_name || c.slug).join(", ")}.</p>}
-            {/* A live plan during grace (Pro after a White-label → Pro switch) is changed in the portal, e.g. back to White-label. */}
-            {billing.has_customer && ["trialing", "active", "past_due"].includes(billing.status) && (
+            {liveInGrace && (
               <button type="button" className="btn btn-secondary btn-auto" disabled={busy !== null} onClick={() => go(adminApi.billingPortal, "portal")}>
                 {busy === "portal" ? "Opening…" : "Manage billing"}
               </button>
             )}
           </section>
-          {planCards}
+          {/* Already on a plan (e.g. Pro): Checkout would refuse a second subscription, so offer only the portal. */}
+          {!liveInGrace && planCards}
         </>
       ) : billing.paid ? (
         <section className="card plan-now">
