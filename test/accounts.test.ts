@@ -355,4 +355,30 @@ describe("Google sign-in", () => {
     fakeGoogle({ sub: `g-other-${uniq()}`, email: s.address, email_verified: true });
     expect(landing(await callback(env, g.state, g.cookie))).toBe(`${BASE}/login?error=google_mismatch`);
   });
+
+  it("refuses a client's own sign-in, before linking anything", async () => {
+    const { env } = envWith();
+    const address = email();
+    const userId = `usr_${uniq()}`;
+    await env.DB.prepare("INSERT INTO users (id, email, created_at, client_calendar_id) VALUES (?, ?, ?, ?)")
+      .bind(userId, address, Date.now(), `cal_${uniq()}`).run();
+    for (const invite of [undefined, await makeInvite(env)]) {
+      const { state, cookie } = await startGoogle(env, invite);
+      fakeGoogle({ sub: `g-${uniq()}`, email: address, email_verified: true });
+      expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=client_account`);
+      vi.restoreAllMocks();
+    }
+    const row = await env.DB.prepare("SELECT google_sub FROM users WHERE id = ?").bind(userId).first<{ google_sub: string | null }>();
+    expect(row!.google_sub).toBeNull();
+  });
+
+  it("refuses a client's own sign-in found by its Google id too", async () => {
+    const { env } = envWith();
+    const sub = `g-${uniq()}`;
+    await env.DB.prepare("INSERT INTO users (id, email, google_sub, created_at, client_calendar_id) VALUES (?, ?, ?, ?, ?)")
+      .bind(`usr_${uniq()}`, email(), sub, Date.now(), `cal_${uniq()}`).run();
+    const { state, cookie } = await startGoogle(env);
+    fakeGoogle({ sub, email: email(), email_verified: true });
+    expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=client_account`);
+  });
 });

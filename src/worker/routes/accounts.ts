@@ -125,6 +125,7 @@ accounts.get("/google/callback", async (c) => {
   let found: Found | { inviteUsed: true } = await lookUp(db, who.email, who.sub);
   if (!found && state.inviteHash) found = await createUserWithInvite(db, who.email, who.sub, state.inviteHash, now);
   if (!found) return fail("no_account");
+  if ("clientOnly" in found) return fail("client_account");
   if ("mismatch" in found) return fail("google_mismatch");
   if ("inviteUsed" in found) return fail("invite_used");
   await touchLogin(db, found.user.id, now);

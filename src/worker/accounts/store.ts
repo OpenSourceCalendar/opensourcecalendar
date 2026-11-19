@@ -7,9 +7,10 @@ export const LINK_KEEP_MS = 2 * 86400_000;
 export const LIMITS = { perEmailHour: 3, perIpHour: 10, perDay: 300 };
 const HOUR = 3600_000;
 
-export type UserRow = { id: string; email: string; google_sub: string | null };
-/** A user, a Google account that doesn't match the user with that email, or nobody. */
-export type Found = { user: UserRow } | { mismatch: true } | null;
+export type UserRow = { id: string; email: string; google_sub: string | null; client_calendar_id: string | null };
+/** A user, a Google account that doesn't match the user with that email, a client sign-in reached through Google, or nobody. */
+export type Found = { user: UserRow } | { mismatch: true } | { clientOnly: true } | null;
+const USER_COLS = "id, email, google_sub, client_calendar_id";
 
 export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 
@@ -24,17 +25,22 @@ export async function inviteOpen(db: D1Database, inviteHash: string, now: number
   return !!(await db.prepare("SELECT 1 AS ok FROM invites WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?").bind(inviteHash, now).first());
 }
 
-/** Who this is, in the same order everywhere: Google id, then email (linking Google if the user has none yet). */
+/**
+ * Who this is, in the same order everywhere: Google id, then email (linking Google if the user has none yet).
+ * A White-label client's own sign-in is email + password only: through Google it's { clientOnly }, checked before
+ * anything is linked, so a Google id never gets attached to it.
+ */
 export async function lookUp(db: D1Database, email: string, googleSub?: string): Promise<Found> {
   if (googleSub) {
-    const bySub = await db.prepare("SELECT id, email, google_sub FROM users WHERE google_sub = ?").bind(googleSub).first<UserRow>();
-    if (bySub) return { user: bySub };
+    const bySub = await db.prepare(`SELECT ${USER_COLS} FROM users WHERE google_sub = ?`).bind(googleSub).first<UserRow>();
+    if (bySub) return bySub.client_calendar_id ? { clientOnly: true } : { user: bySub };
   }
-  const byEmail = await db.prepare("SELECT id, email, google_sub FROM users WHERE email = ?").bind(email).first<UserRow>();
+  const byEmail = await db.prepare(`SELECT ${USER_COLS} FROM users WHERE email = ?`).bind(email).first<UserRow>();
   if (!byEmail) return null;
   if (!googleSub) return { user: byEmail };
+  if (byEmail.client_calendar_id) return { clientOnly: true };
   if (byEmail.google_sub !== null) return { mismatch: true };
-  const linked = await db.prepare("UPDATE users SET google_sub = ? WHERE id = ? AND google_sub IS NULL").bind(googleSub, byEmail.id).run();
+  const linked = await db.prepare("UPDATE users SET google_sub = ? WHERE id = ? AND google_sub IS NULL AND client_calendar_id IS NULL").bind(googleSub, byEmail.id).run();
   if (linked.meta.changes === 1) return { user: { ...byEmail, google_sub: googleSub } };
   return lookUp(db, email, googleSub); // linked by someone else meanwhile: now a match or a mismatch
 }
@@ -53,7 +59,7 @@ export async function createUserWithInvite(
   try {
     await db.prepare("INSERT INTO users (id, email, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)")
       .bind(id, email, googleSub ?? null, now, now).run();
-    return { user: { id, email, google_sub: googleSub ?? null } };
+    return { user: { id, email, google_sub: googleSub ?? null, client_calendar_id: null } };
   } catch (err) {
     // Someone signed up with this email or Google account at the same moment, or D1 failed: give the invite back.
     await db.prepare("UPDATE invites SET used_at = NULL, used_by = NULL WHERE token_hash = ? AND used_by = ?").bind(inviteHash, id).run();
