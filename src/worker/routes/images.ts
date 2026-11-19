@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { requireCalendar } from "../auth";
+import { imageUrl } from "../lib/image-url";
 import { toBase64Url } from "../lib/ids";
 import { notFound } from "../lib/http";
 import type { Branding } from "../settings";
@@ -13,7 +14,6 @@ const KINDS = {
 /** The only keys the public image route will serve. */
 export const IMAGE_KEY_RE = /^cal\/[A-Za-z0-9_]+\/(logo|hero)-[A-Za-z0-9_-]{8,40}\.(png|jpg|webp)$/;
 
-import { imageUrl } from "../lib/image-url";
 export { imageUrl };
 
 /** Branding as the public sees it: image URLs instead of storage keys. */

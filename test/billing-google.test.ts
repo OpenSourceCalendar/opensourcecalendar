@@ -66,6 +66,7 @@ describe("Google on Free", () => {
       method: "POST", body: new URLSearchParams({ code: "good-code", state }), headers: { "Content-Type": "application/x-www-form-urlencoded" },
     }, env);
     expect(confirm.status).toBe(402);
+    expect(await confirm.text()).toContain("see your plan");
     expect(await env.DB.prepare("SELECT 1 FROM google_connections WHERE calendar_id = ?").bind(a.calendarId).first()).toBeNull();
   });
 });
@@ -96,5 +97,24 @@ describe("Google for a paused client", () => {
 
     const res = await adminCall(env, a.token, "/google/connect", { method: "POST", client: c.calendarId });
     expect(res.status).toBe(402);
+  });
+  it("finishing Google's sign-in on a paused client says to contact the provider, never to see a plan", async () => {
+    const env = billingEnv();
+    const fake = new FakeGoogle();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fake.fetch);
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    const c = await clientCalendar(env, a.userId);
+    const res = await adminCall(env, a.token, "/google/connect", { method: "POST", client: c.calendarId });
+    const state = new URL(((await res.json()) as { url: string }).url).searchParams.get("state")!;
+    await setBilling(env, a.userId, { plan: "pro" }); // White-label ended: the client is paused before Connect is pressed
+    const confirm = await app.request("https://book.example.test/api/google/confirm", {
+      method: "POST", body: new URLSearchParams({ code: "good-code", state }), headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    }, env);
+    expect(confirm.status).toBe(402);
+    const html = await confirm.text();
+    expect(html).toContain("Please contact your provider.");
+    expect(html).not.toContain("see your plan");
+    expect(await env.DB.prepare("SELECT 1 FROM google_connections WHERE calendar_id = ?").bind(c.calendarId).first()).toBeNull();
   });
 });

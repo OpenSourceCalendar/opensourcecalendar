@@ -126,7 +126,3 @@ export function revokeTokenStatements(db: D1Database, userId: string, email: str
     db.prepare(`UPDATE login_links SET used_at = ? WHERE email = ? AND used_at IS NULL${guard}`).bind(now, email, ...extra),
   ];
 }
-
-export async function revokeTokens(db: D1Database, userId: string, email: string, now: number) {
-  await db.batch(revokeTokenStatements(db, userId, email, now));
-}

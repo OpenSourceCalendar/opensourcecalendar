@@ -61,7 +61,11 @@ export function captureSessionFromUrl(): boolean {
   const link = login ? null : /(?:^#|&)session=([^&]+)/.exec(window.location.hash);
   if (!login && !link) return false;
   // Tokens are base64url and a dot: nothing to decode.
-  if (login) setToken(login[1], "hosted");
+  if (login) {
+    setToken(login[1], "hosted");
+    // Google sign-in is the agency's: a later "sign in again" goes to the plain login page, not a client's.
+    setLoginPage("/login");
+  }
   else setToken(link![1]);
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
   return true;
@@ -111,6 +115,9 @@ export function clearToken(): void {
 
 /** Password and hosted sign-ins get a Sign out button; a host app has its own. */
 export const canSignOut = () => read(MODE) === "password" || read(MODE) === "hosted";
+
+/** A hosted account's session (not a host-app link or the standalone password). */
+export const isHostedSession = () => read(MODE) === "hosted";
 
 /** True when the last sign-in in this browser was a hosted account, even after it ended. */
 export const lastLoginWasHosted = () => readLocal(LAST_LOGIN) === "hosted";

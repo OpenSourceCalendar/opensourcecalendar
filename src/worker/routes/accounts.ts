@@ -146,7 +146,9 @@ accounts.post("/password-login", smallBody, async (c) => {
   }
   await forgetAttempt(db, attempt.id);
   if (needsRehash(user.password_hash)) {
-    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(await hashPassword(c.env, body.data.password), user.id).run();
+    // Only if the hash is still the one just checked: a password changed meanwhile isn't put back.
+    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?")
+      .bind(await hashPassword(c.env, body.data.password), user.id, user.password_hash).run();
   }
   await touchLogin(db, user.id, now);
   const slug = user.client_calendar_id

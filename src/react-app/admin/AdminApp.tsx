@@ -27,7 +27,7 @@ import { Schedule } from "./Schedule";
 import { Notifications } from "./Notifications";
 import { Plan } from "./Plan";
 import { Services } from "./Services";
-import { captureSessionFromUrl, clearToken, getClientId, getToken, lastCalendarId, setClientId, setLastCalendarId } from "./session";
+import { captureSessionFromUrl, clearToken, getClientId, getToken, isHostedSession, lastCalendarId, setClientId, setLastCalendarId } from "./session";
 import { DEFAULT_WEEK, FIRST_SERVICE, Setup } from "./Setup";
 import { Share } from "./Share";
 import { ComingSoon, NAV, Shell } from "./Shell";
@@ -43,7 +43,7 @@ type State =
   | { kind: "error" }
   /** A client's own sign-in whose calendar was deleted by the agency. */
   | { kind: "gone" }
-  /** `account` is null when /account couldn't be read (a host-app session, or a failure): treated as the agency. */
+  /** `account` is null for a host-app or standalone session (or a failure there): treated as the agency. */
   | { kind: "ready"; calendar: AdminCalendar; account: AccountInfo | null };
 
 /** What every page gets. */
@@ -117,9 +117,19 @@ export function AdminApp() {
     const turn = ++loads.current;
     // A fresh link while the calendar is open reloads quietly, so nothing being typed is lost unless the business changes.
     if (!ready.current) setState({ kind: "loading" });
+    // A hosted session must know its role: a failed /account is an error, never the agency's screens.
+    const hosted = isHostedSession();
+    let accountFailed = false;
     try {
       // The role comes with the calendar, so a client's screens never ask for billing or the client list.
-      const [calendar, account] = await Promise.all([loadCalendar(), adminApi.account().catch(() => null)]);
+      const [calendar, account] = await Promise.all([
+        loadCalendar(),
+        adminApi.account().catch((e: unknown) => {
+          if (!hosted) return null;
+          accountFailed = true;
+          throw e;
+        }),
+      ]);
       if (turn !== loads.current) return; // a newer link has taken over
       const before = lastCalendarId();
       if (fromLink.current && before && before !== calendar.id) {
@@ -136,6 +146,7 @@ export function AdminApp() {
     } catch (e) {
       if (turn !== loads.current) return;
       fromLink.current = false;
+      if (accountFailed && !(e instanceof ApiError && e.status === 401)) return setState({ kind: "error" }); // 401 is handled below
       if (!(e instanceof ApiError)) throw e;
       if (e.status === 404) {
         // No calendar: an agency sets one up; a client whose calendar was removed can't, so it's told so instead.

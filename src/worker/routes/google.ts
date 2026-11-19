@@ -4,6 +4,7 @@ import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { requireCalendar } from "../auth";
 import { entitlements } from "../billing/entitlements";
+import { isClient } from "../billing/store";
 import { originOf } from "../email/queue";
 import { randomToken, sha256Hex } from "../lib/ids";
 import { parseBody } from "../lib/http";
@@ -261,7 +262,10 @@ export async function googleConfirm(c: Context<AppEnv>) {
   if (!live || !code) return EXPIRED();
   // Connecting is refused on Free, like the Connect button (the plan may have changed since it was pressed).
   if (!(await entitlements(c.env, live.cal)).googleBusy) {
-    return page(402, "Not connected", "Google Calendar sync is part of the paid plans. Go back to your calendar to see your plan.");
+    // A client has no plan to look at: its provider pays.
+    return page(402, "Not connected", isClient(live.cal)
+      ? "Google Calendar sync isn't available right now. Please contact your provider."
+      : "Google Calendar sync is part of the paid plans. Go back to your calendar to see your plan.");
   }
   // One use only: whoever deletes the row first goes on.
   const used = await db.prepare("DELETE FROM google_states WHERE nonce_hash = ? RETURNING calendar_id").bind(live.nonceHash).first<{ calendar_id: string }>();

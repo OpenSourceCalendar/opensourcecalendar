@@ -99,6 +99,8 @@ function PasswordForm({ loginPath, human }: { loginPath: string; human: Human })
         code === "wrong_password" ? "Email or password is wrong."
         : code === "too_many_tries" ? "Too many tries. Wait 15 minutes, or use “Email me a sign-in link” below."
         : code === "turnstile_failed" ? "The security check didn't pass. Please try again."
+        : code === "too_large" ? "That's too long."
+        : code === "invalid_input" ? "Please check what you typed."
         : "We couldn't sign you in. Check your connection and try again.",
       );
       human.reset(); // a Turnstile token works once
@@ -137,6 +139,7 @@ function SignInOptions({ cfg, invite, google = true, human }: { cfg: AccountConf
     setError("");
     try {
       await accountApi.emailLink({ email: email.trim(), ...(invite && { invite }), ...(human.token && { turnstile_token: human.token }) });
+      human.reset(); // spent: the password form needs a fresh one
       setState("sent");
     } catch (err) {
       setError(err instanceof ApiError && err.error === "turnstile_failed" ? "The security check didn't pass. Please try again." : "We couldn't send the link. Check your connection and try again.");
@@ -377,6 +380,8 @@ export function InvitePage() {
         code === "password_weak" ? "This password has shown up in a data breach or is too easy to guess. Please choose another."
         : code === "password_too_long" ? "Use 256 characters or fewer."
         : code === "too_many_tries" ? "Too many tries. Wait 15 minutes and try again."
+        : code === "too_large" ? "That's too long."
+        : code === "invalid_input" ? "Please check what you typed."
         : "We couldn't save your password. Check your connection and try again.",
       );
       setBusy(false);
