@@ -15,11 +15,12 @@ export function signInEmail(from: string, to: string, link: string, signup: bool
 const button = (link: string, label: string) =>
   `<p><a href="${esc(link)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1e40af;color:#ffffff;text-decoration:none;font-weight:700">${esc(label)}</a></p>`;
 
-/** A client's sign-in link: the client's name only, never the product's. */
+/** A client's sign-in link: the client's name only, never the product's ("" if its calendar is gone: neutral wording). */
 export function clientSignInEmail(from: string, to: string, link: string, brand: string): OutgoingEmail {
-  const text = `Use this link to log in to your booking calendar for ${brand}:\n\n${link}\n\nIt works once, for 15 minutes.\n\nIf you didn't ask for this, you can ignore this email.\n`;
-  const html = `<p>Use this button to log in to your booking calendar for ${esc(brand)}.</p>${button(link, "Log in")}<p>It works once, for 15 minutes. If you didn't ask for this, you can ignore this email.</p>`;
-  return { to, from: { email: from, name: brand }, subject: `Your sign-in link for ${brand}`, text, html };
+  const where = brand ? `your booking calendar for ${brand}` : "your booking calendar";
+  const text = `Use this link to log in to ${where}:\n\n${link}\n\nIt works once, for 15 minutes.\n\nIf you didn't ask for this, you can ignore this email.\n`;
+  const html = `<p>Use this button to log in to ${esc(where)}.</p>${button(link, "Log in")}<p>It works once, for 15 minutes. If you didn't ask for this, you can ignore this email.</p>`;
+  return { to, from: { email: from, name: brand || "Your booking calendar" }, subject: brand ? `Your sign-in link for ${brand}` : "Your sign-in link", text, html };
 }
 
 /** The invite a White-label agency sends from the Clients page, in the client's name. */

@@ -416,4 +416,18 @@ describe("client sign-in pages", () => {
     expect(mail.text).toContain(`https://book.example.test/login/${c.slug}/verify#t=`);
     expect(mail.text + mail.html + mail.subject).not.toMatch(/open source calendar/i);
   });
+
+  it("a client whose calendar is gone still gets neutral wording, never the product's name", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    await env.DB.prepare("DELETE FROM calendars WHERE id = ?").bind(c.calendarId).run();
+    expect((await req(env, "/api/account/email-link", { json: { email: u.email } })).status).toBe(202);
+    const mail = sent.at(-1)!;
+    expect(mail.to).toBe(u.email);
+    expect(mail.from.name).toBe("Your booking calendar");
+    expect(mail.text).toContain("https://book.example.test/login/verify#t=");
+    expect(mail.from.name + mail.text + mail.html + mail.subject).not.toMatch(/open source calendar/i);
+  });
 });

@@ -71,11 +71,13 @@ async function sendLink(env: Bindings, email: string, invite: string | null, ip:
   }
   if (!(await linkAllowed(db, email, await sha256Hex(`ip:${ip}`), now))) return;
   const token = await saveLink(db, email, inviteHash, await sha256Hex(`ip:${ip}`), now);
-  // A client's sign-in comes in the client's name and opens the client's own sign-in page.
+  // A client's sign-in comes in the client's name and opens the client's own sign-in page. If its calendar is gone,
+  // neutral wording and the plain page: a client never sees the product's name.
   const clientId = found && "user" in found ? found.user.client_calendar_id : null;
-  const brand = clientId ? await clientBrand(db, clientId) : null;
-  if (brand) {
-    await env.EMAIL.send(clientSignInEmail(from, email, `${publicBase(env)}/login/${brand.slug}/verify#t=${token}`, brand.name));
+  if (clientId) {
+    const brand = await clientBrand(db, clientId);
+    const path = brand ? `/login/${brand.slug}/verify` : "/login/verify";
+    await env.EMAIL.send(clientSignInEmail(from, email, `${publicBase(env)}${path}#t=${token}`, brand?.name ?? ""));
   } else {
     await env.EMAIL.send(signInEmail(from, email, `${publicBase(env)}/login/verify#t=${token}`, !!inviteHash));
   }
