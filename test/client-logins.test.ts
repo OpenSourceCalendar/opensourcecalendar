@@ -34,13 +34,19 @@ describe("a client's own sign-in", () => {
     const week = (open: number[]) => [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, open: open.includes(weekday), start_min: 540, end_min: 1020, breaks: [] }));
     const date = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
     const svc = (await json<{ id: string }>(await asAgency(mine.calendarId, "/services", { json: { name: "Mine svc", duration_min: 30 } }))).id;
-    await asAgency(other.calendarId, "/services", { json: { name: "Other svc", duration_min: 30 } });
+    const otherSvc = (await json<{ id: string }>(await asAgency(other.calendarId, "/services", { json: { name: "Other svc", duration_min: 30 } }))).id;
     await asAgency(mine.calendarId, "/availability/weekly", { method: "PUT", json: { days: week([0, 1, 2, 3, 4, 5, 6]) } });
-    await asAgency(other.calendarId, "/availability/weekly", { method: "PUT", json: { days: week([3]) } });
+    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    await asAgency(other.calendarId, "/availability/weekly", { method: "PUT", json: { days: week([dow]) } });
     await asAgency(mine.calendarId, "/customers", { json: { first_name: "Mona", phone: "5035550111" } });
     await asAgency(other.calendarId, "/customers", { json: { first_name: "Olga", phone: "5035550122" } });
     await asAgency(other.calendarId, "/reminders", { json: { at: `${date}T18:00:00.000Z`, title: "Other reminder" } });
     await asAgency(other.calendarId, "/calendar", { method: "PATCH", json: { branding: { business_name: "Other Co" } } });
+    // A booking on the other calendar only, so /appointments differs between the two.
+    const otherSlots = (await json<{ slots: string[] }>(await asAgency(other.calendarId, `/slots?service_id=${otherSvc}&date=${date}`))).slots;
+    const booked = await asAgency(other.calendarId, "/appointments", { json: { service_id: otherSvc, start: otherSlots[0], customer: { first_name: "Olga", phone: "5035550122" } } });
+    expect(booked.status).toBe(201);
+    // /google can't easily differ (neither calendar is connected); it stays in the list as a status check.
 
     for (const path of [
       "/calendar", "/services", "/availability", "/customers", "/dashboard", "/google",
@@ -98,6 +104,16 @@ describe("a client's own sign-in", () => {
     await env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(a.userId).run();
     expect((await req(env, "/api/admin/calendar", { token: old })).status).toBe(401);
     expect((await req(env, "/api/admin/calendar", { token: a.token })).status).toBe(401);
+  });
+
+  it("is signed out at once when its sign-in is deleted", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const mine = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, mine.calendarId);
+    expect((await req(env, "/api/admin/calendar", { token: u.token })).status).toBe(200);
+    await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(u.userId).run();
+    expect((await req(env, "/api/admin/calendar", { token: u.token })).status).toBe(401);
   });
 
   it("the agency still reaches its billing and clients", async () => {
