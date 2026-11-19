@@ -391,3 +391,29 @@ describe("accepting an invite", () => {
     expect((await req(env, "/api/account/password-login", { json: { email: u.email, password: PW }, ip })).status).toBe(200);
   });
 });
+
+describe("client sign-in pages", () => {
+  it("any hosted calendar's slug gives its look; a renamed one points to the new slug; others 404", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    expect(await json(await req(env, `/api/account/login-page/${c.slug}`))).toMatchObject({ slug: c.slug, name: "Client Co" });
+    expect((await req(env, `/api/account/login-page/${a.slug}`)).status).toBe(200);
+    const renamed = `renamed-${uniq()}`;
+    await req(env, "/api/admin/calendar", { token: a.token, client: c.calendarId, method: "PATCH", json: { slug: renamed } });
+    expect(await json(await req(env, `/api/account/login-page/${c.slug}`))).toMatchObject({ slug: renamed });
+    expect((await req(env, "/api/account/login-page/no-such-slug-here")).status).toBe(404);
+  });
+
+  it("a client's emailed sign-in link comes in the client's name and opens the client's page", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    expect((await req(env, "/api/account/email-link", { json: { email: u.email } })).status).toBe(202);
+    const mail = sent.at(-1)!;
+    expect(mail.from.name).toBe("Client Co");
+    expect(mail.text).toContain(`https://book.example.test/login/${c.slug}/verify#t=`);
+    expect(mail.text + mail.html + mail.subject).not.toMatch(/open source calendar/i);
+  });
+});

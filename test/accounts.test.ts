@@ -54,7 +54,7 @@ describe("the switch", () => {
   it("tells the pages what this install offers", async () => {
     const { env } = envWith();
     const cfg = (await (await req(env, "/api/account/config")).json()) as Record<string, unknown>;
-    expect(cfg).toEqual({ google: true, email: true, turnstile_site_key: null, public_url: BASE });
+    expect(cfg).toEqual({ google: true, email: true, passwords: true, turnstile_site_key: null, public_url: BASE });
   });
 });
 

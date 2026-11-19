@@ -3,12 +3,12 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie } from "hono/cookie";
 import { z } from "zod";
-import { hostedSession } from "../auth";
+import { HOSTED_APP, hostedSession } from "../auth";
 import { forgetAttempt, INVITE_TOKEN_LIMITS, ipKey, startAttempt } from "../accounts/attempts";
 import { weakPassword } from "../accounts/breach";
 import { acceptInvite, clientBrand, openInvite } from "../accounts/client-users";
 import { publicBase, signupOn } from "../accounts/config";
-import { passwordSetEmail, signInEmail } from "../accounts/email";
+import { clientSignInEmail, passwordSetEmail, signInEmail } from "../accounts/email";
 import { DUMMY_HASH, hashPassword, needsRehash, passwordProblem, passwordsOn, verifyPassword } from "../accounts/password";
 import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
 import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
@@ -16,8 +16,11 @@ import { emailFrom } from "../email/send";
 import { exchangeCode, googleConfig, signInUrl } from "../google/client";
 import { parseBody } from "../lib/http";
 import { randomToken, sha256Hex } from "../lib/ids";
+import { imageUrl } from "../lib/image-url";
 import { verifyTurnstile } from "../lib/turnstile";
+import { parseBranding } from "../settings";
 import type { AppEnv, Bindings } from "../types";
+import { SLUG_HOLD_MS } from "./calendar";
 
 export const accounts = new Hono<AppEnv>();
 accounts.use("*", async (c, next) => (signupOn(c.env) ? next() : c.notFound()));
@@ -25,7 +28,7 @@ accounts.use("*", async (c, next) => (signupOn(c.env) ? next() : c.notFound()));
 const canEmail = (env: Bindings) => !!emailFrom(env) && !!env.EMAIL;
 
 accounts.get("/config", (c) =>
-  c.json({ google: !!googleConfig(c.env), email: canEmail(c.env), turnstile_site_key: c.env.TURNSTILE_SITE_KEY || null, public_url: publicBase(c.env) }));
+  c.json({ google: !!googleConfig(c.env), email: canEmail(c.env), passwords: passwordsOn(c.env), turnstile_site_key: c.env.TURNSTILE_SITE_KEY || null, public_url: publicBase(c.env) }));
 
 accounts.get("/invite/:token", async (c) =>
   c.json({ valid: await inviteOpen(c.env.DB, await sha256Hex(c.req.param("token")), Date.now()) }));
@@ -59,15 +62,23 @@ async function sendLink(env: Bindings, email: string, invite: string | null, ip:
   const from = emailFrom(env);
   if (!from || !env.EMAIL) return;
   const db = env.DB;
+  const found = await lookUp(db, email);
   let inviteHash: string | null = null;
-  if (!(await lookUp(db, email))) {
+  if (!found) {
     if (!invite) return;
     inviteHash = await sha256Hex(invite);
     if (!(await inviteOpen(db, inviteHash, now))) return;
   }
   if (!(await linkAllowed(db, email, await sha256Hex(`ip:${ip}`), now))) return;
   const token = await saveLink(db, email, inviteHash, await sha256Hex(`ip:${ip}`), now);
-  await env.EMAIL.send(signInEmail(from, email, `${publicBase(env)}/login/verify#t=${token}`, !!inviteHash));
+  // A client's sign-in comes in the client's name and opens the client's own sign-in page.
+  const clientId = found && "user" in found ? found.user.client_calendar_id : null;
+  const brand = clientId ? await clientBrand(db, clientId) : null;
+  if (brand) {
+    await env.EMAIL.send(clientSignInEmail(from, email, `${publicBase(env)}/login/${brand.slug}/verify#t=${token}`, brand.name));
+  } else {
+    await env.EMAIL.send(signInEmail(from, email, `${publicBase(env)}/login/verify#t=${token}`, !!inviteHash));
+  }
 }
 
 accounts.post("/email-link/verify", async (c) => {
@@ -83,6 +94,23 @@ accounts.post("/email-link/verify", async (c) => {
   if (!("user" in found)) return c.json({ error: "invite_used" }, 400);
   await touchLogin(db, found.user.id, now);
   return c.json({ ...(await hostedSession(c.env, found.user.id, now)), email: found.user.email });
+});
+
+/** Name, logo and colours for /login/<slug>. Every hosted calendar answers, so this doesn't reveal which are clients. */
+accounts.get("/login-page/:slug", async (c) => {
+  const db = c.env.DB;
+  const slug = c.req.param("slug").slice(0, 60);
+  type Cal = { slug: string; branding: string };
+  let cal = await db.prepare("SELECT slug, branding FROM calendars WHERE slug = ? AND app_id = ?").bind(slug, HOSTED_APP).first<Cal>();
+  if (!cal) {
+    // A renamed calendar keeps its old address for 90 days: send the page to the new one.
+    const held = await db.prepare("SELECT calendar_id FROM released_slugs WHERE slug = ? AND released_at > ?")
+      .bind(slug, Date.now() - SLUG_HOLD_MS).first<{ calendar_id: string }>();
+    if (held) cal = await db.prepare("SELECT slug, branding FROM calendars WHERE id = ? AND app_id = ?").bind(held.calendar_id, HOSTED_APP).first<Cal>();
+  }
+  if (!cal) return c.json({ error: "not_found" }, 404);
+  const b = parseBranding(cal.branding);
+  return c.json({ slug: cal.slug, name: b.business_name, logo_url: imageUrl(b.logo_key), color: b.color, style: b.style });
 });
 
 /** Password routes take small bodies only, so a huge "password" can't burn CPU. */

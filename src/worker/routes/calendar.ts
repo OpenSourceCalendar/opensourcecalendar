@@ -33,7 +33,7 @@ export function calendarJson(row: CalendarRow, env: Bindings) {
 }
 
 /** How long a changed booking link stays reserved for the calendar that gave it up. */
-const SLUG_HOLD_MS = 90 * 24 * 60 * 60 * 1000;
+export const SLUG_HOLD_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** In use by another calendar, or given up by another calendar in the last 90 days. */
 export async function slugTaken(db: D1Database, slug: string, exceptId?: string): Promise<boolean> {
