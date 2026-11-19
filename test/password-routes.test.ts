@@ -94,6 +94,9 @@ describe("password sign-in", () => {
     const { env } = setup();
     expect(await ipKey(env, "2001:db8::1")).toBe(await ipKey(env, "2001:db8:0:0:aaaa:bbbb:cccc:dddd"));
     expect(await ipKey(env, "2001:db8::1")).not.toBe(await ipKey(env, "2001:db8:0:1::1"));
+    expect(await ipKey(env, "::ffff:203.0.113.5")).toBe(await ipKey(env, "203.0.113.5"));
+    expect(await ipKey(env, "::FFFF:203.0.113.5")).toBe(await ipKey(env, "203.0.113.5"));
+    expect(await ipKey(env, "::ffff:203.0.113.5")).not.toBe(await ipKey(env, "::ffff:203.0.113.6"));
   });
 
   it("refuses big bodies and is off without a pepper", async () => {

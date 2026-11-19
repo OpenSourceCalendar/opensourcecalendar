@@ -17,8 +17,11 @@ export function ipv6Net64(ip: string): string {
 
 /** A keyed hash of the network (IPv4 address, or IPv6 /64), so the table holds no IP addresses. */
 export async function ipKey(env: Bindings, ip: string | null | undefined): Promise<string> {
+  // CF-Connecting-IP is always set on Workers; if it were missing, every such try would share the empty key (acceptable).
   const raw = (ip ?? "").trim();
-  const net = raw.includes(":") ? ipv6Net64(raw) : raw;
+  // An IPv4-mapped IPv6 address ("::ffff:203.0.113.5") is that IPv4 address, not one shared /64.
+  const v4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw)?.[1];
+  const net = v4 ?? (raw.includes(":") ? ipv6Net64(raw) : raw);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env.SESSION_SECRET ?? ""), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`ip:${net}`)));
   return [...mac].map((b) => b.toString(16).padStart(2, "0")).join("");
