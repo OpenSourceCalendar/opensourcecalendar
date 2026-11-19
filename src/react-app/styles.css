@@ -1409,3 +1409,7 @@ body:has(.page[data-style="bold"]) {
 
 .password-field { display: flex; gap: 10px; align-items: center; }
 .password-field .input { flex: 1; min-width: 0; }
+
+/* A client's logo and name on its sign-in pages. */
+.brand-head { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.brand-head-logo { max-height: 56px; max-width: 200px; object-fit: contain; }

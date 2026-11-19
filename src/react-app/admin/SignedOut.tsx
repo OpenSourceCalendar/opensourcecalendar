@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError } from "../api";
 import { adminApi } from "./api";
-import { lastLoginWasHosted, setToken } from "./session";
+import { lastLoginWasHosted, loginPage, setToken } from "./session";
 
 /**
  * Shown without a valid session. Standalone installs get a password form;
@@ -54,7 +54,7 @@ export function SignedOut({ ended, onSignedIn }: { ended: boolean; onSignedIn: (
           <>
             <h1 className="title">{ended ? "Your session ended" : "Log in to your calendar"}</h1>
             <p className="lede">Log in again to keep going.</p>
-            <a className="btn btn-primary" href="/login">
+            <a className="btn btn-primary" href={loginPage()}>
               Log in
             </a>
           </>
