@@ -3,7 +3,7 @@ import { signSession } from "../src/worker/lib/session";
 import { HOSTED_APP } from "../src/worker/auth";
 import { app } from "../src/worker/index";
 import { clientCalendar, clientUser, hostedAccount, setBilling } from "./stripe-fake";
-import { BASE, hibpClean, req, setup } from "./password-helpers";
+import { BASE, hibpClean, linkToken, PW, req, setup, userWithPassword } from "./password-helpers";
 import { uniq } from "./helpers";
 
 const json = async <T>(res: Response) => (await res.json()) as T;
@@ -273,5 +273,93 @@ describe("what the screens need to know", () => {
     expect(await access()).toEqual({ paused: true, reminders: true, google_busy: false, footer_hidden: true, free: false });
     await setBilling(env, a.userId, { plan: "white_label", status: "active" });
     expect(await access()).toEqual({ paused: false, reminders: true, google_busy: true, footer_hidden: true, free: false });
+  });
+});
+
+describe("accepting an invite", () => {
+  const NEW = "my own long and quiet passphrase";
+  async function invited(env: Parameters<typeof req>[0], sent: { text: string }[]) {
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const address = `client-${uniq()}@example.test`;
+    await req(env, `/api/admin/clients/${c.calendarId}/invite`, { token: a.token, json: { email: address } });
+    return { a, c, address, token: linkToken(sent.at(-1)! as never) };
+  }
+
+  it("check shows the client's look and the email; bad tokens all look the same", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: i.token } })))
+      .toMatchObject({ valid: true, email: i.address, name: "Client Co", slug: i.c.slug });
+    for (const token of ["nope", "x".repeat(43)]) {
+      expect(await json(await req(env, "/api/account/client-invite/check", { json: { token } }))).toEqual({ valid: false });
+    }
+  });
+
+  it("sets the password, signs in as the client, and works once", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    const res = await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } });
+    expect(res.status).toBe(200);
+    const s = await json<{ token: string; client_slug: string }>(res);
+    expect(s.client_slug).toBe(i.c.slug);
+    expect(await json(await req(env, "/api/admin/account", { token: s.token }))).toMatchObject({ role: "client", email: i.address, has_password: true });
+    expect((await req(env, "/api/account/password-login", { json: { email: i.address, password: NEW } })).status).toBe(200);
+    expect(await json(await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } }))).toEqual({ error: "invite_invalid" });
+    expect(sent.at(-1)!.subject).toBe("Your password was set");
+  });
+
+  it("two accepts at once: exactly one wins", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    const res = await Promise.all([0, 1, 2].map(() => req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } })));
+    expect(res.map((r) => r.status).sort()).toEqual([200, 400, 400]);
+  });
+
+  it("a weak password is refused without using up the invite", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    expect(await json(await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: "client co is the best" } }))).toEqual({ error: "password_weak" });
+    expect((await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } })).status).toBe(200);
+  });
+
+  it("an expired invite, or one whose sign-in was removed, is invalid", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    await req(env, `/api/admin/clients/${i.c.calendarId}/sign-in`, { token: i.a.token, method: "DELETE" });
+    expect(await json(await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } }))).toEqual({ error: "invite_invalid" });
+    const j = await invited(env, sent);
+    // Only this test's invite: D1 is shared by every test in the file.
+    await env.DB.prepare("UPDATE client_invites SET expires_at = 0 WHERE user_id = (SELECT id FROM users WHERE client_calendar_id = ?)")
+      .bind(j.c.calendarId).run();
+    expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: j.token } }))).toEqual({ valid: false });
+  });
+
+  it("a resend makes the older link stop working", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    await req(env, `/api/admin/clients/${i.c.calendarId}/invite`, { token: i.a.token, json: { email: i.address } });
+    expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: i.token } }))).toEqual({ valid: false });
+    expect(await json(await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } }))).toEqual({ error: "invite_invalid" });
+  });
+
+  it("an invite stops working if the sign-in's email changed after it was sent", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    // As if a resend to another address changed the email but its revoke hadn't landed yet.
+    await env.DB.prepare("UPDATE users SET email = ? WHERE client_calendar_id = ?").bind(`moved-${uniq()}@example.test`, i.c.calendarId).run();
+    expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: i.token } }))).toEqual({ valid: false });
+    expect(await json(await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } }))).toEqual({ error: "invite_invalid" });
+  });
+
+  it("bad tokens have their own limit (20 per network) and don't count as sign-in tries", async () => {
+    const { env } = setup();
+    const ip = "203.0.113.9";
+    for (let n = 0; n < 20; n++) {
+      expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: `bad-${n}` }, ip }))).toEqual({ valid: false });
+    }
+    expect((await req(env, "/api/account/client-invite/check", { json: { token: "bad-21" }, ip })).status).toBe(429);
+    const u = await userWithPassword(env);
+    expect((await req(env, "/api/account/password-login", { json: { email: u.email, password: PW }, ip })).status).toBe(200);
   });
 });

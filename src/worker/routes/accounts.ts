@@ -4,12 +4,14 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { hostedSession } from "../auth";
-import { forgetAttempt, ipKey, startAttempt } from "../accounts/attempts";
+import { forgetAttempt, INVITE_TOKEN_LIMITS, ipKey, startAttempt } from "../accounts/attempts";
+import { weakPassword } from "../accounts/breach";
+import { acceptInvite, clientBrand, openInvite } from "../accounts/client-users";
 import { publicBase, signupOn } from "../accounts/config";
-import { signInEmail } from "../accounts/email";
-import { DUMMY_HASH, hashPassword, needsRehash, passwordsOn, verifyPassword } from "../accounts/password";
+import { passwordSetEmail, signInEmail } from "../accounts/email";
+import { DUMMY_HASH, hashPassword, needsRehash, passwordProblem, passwordsOn, verifyPassword } from "../accounts/password";
 import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
-import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
+import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, revokeTokens, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
 import { emailFrom } from "../email/send";
 import { exchangeCode, googleConfig, signInUrl } from "../google/client";
 import { parseBody } from "../lib/http";
@@ -121,6 +123,62 @@ accounts.post("/password-login", smallBody, async (c) => {
     ? ((await db.prepare("SELECT slug FROM calendars WHERE id = ?").bind(user.client_calendar_id).first<{ slug: string }>())?.slug ?? null)
     : null;
   return c.json({ ...(await hostedSession(c.env, user.id, now)), client_slug: slug });
+});
+
+/**
+ * Bad invite tokens: their own keys ("#invite:" email, "invite:" network) and their own limit, so they never count
+ * toward any email's 5 or the network's 30 sign-in tries, and a few bad links can't block someone's sign-in.
+ */
+async function inviteTry(c: Context<AppEnv>, now: number) {
+  const ipk = await ipKey(c.env, c.req.header("CF-Connecting-IP"));
+  return startAttempt(c.env.DB, `#invite:${ipk}`, `invite:${ipk}`, now, INVITE_TOKEN_LIMITS);
+}
+
+const InviteToken = z.object({ token: z.string().min(1).max(200) });
+
+accounts.post("/client-invite/check", smallBody, async (c) => {
+  if (!passwordsOn(c.env)) return c.notFound();
+  const body = await parseBody(c, InviteToken);
+  if (!body.ok) return body.response;
+  const now = Date.now();
+  const attempt = await inviteTry(c, now);
+  if (!attempt.allowed) return c.json({ error: "too_many_tries" }, 429);
+  const inv = await openInvite(c.env.DB, body.data.token, now);
+  const brand = inv && (await clientBrand(c.env.DB, inv.client_calendar_id));
+  // One answer for expired, used, revoked, moved to another email and never existed.
+  if (!inv || !brand) return c.json({ valid: false });
+  await forgetAttempt(c.env.DB, attempt.id);
+  return c.json({ valid: true, email: inv.email, ...brand });
+});
+
+accounts.post("/client-invite/accept", smallBody, async (c) => {
+  if (!passwordsOn(c.env)) return c.notFound();
+  const body = await parseBody(c, InviteToken.extend({ password: z.string().max(1024) }));
+  if (!body.ok) return body.response;
+  const problem = passwordProblem(body.data.password);
+  if (problem) return c.json({ error: `password_${problem}` }, 400);
+  const db = c.env.DB;
+  const now = Date.now();
+  const attempt = await inviteTry(c, now);
+  if (!attempt.allowed) return c.json({ error: "too_many_tries" }, 429);
+  const inv = await openInvite(db, body.data.token, now);
+  const brand = inv && (await clientBrand(db, inv.client_calendar_id));
+  if (!inv || !brand) return c.json({ error: "invite_invalid" }, 400);
+  await forgetAttempt(db, attempt.id);
+  // Checked before the invite is used, so a refused password doesn't burn the link.
+  if (await weakPassword(body.data.password, [inv.email, brand.name])) return c.json({ error: "password_weak" }, 400);
+  if (!(await acceptInvite(db, body.data.token, inv, await hashPassword(c.env, body.data.password), now))) {
+    return c.json({ error: "invite_invalid" }, 400);
+  }
+  // Any other open invite or emailed sign-in link for this sign-in stops working.
+  await revokeTokens(db, inv.user_id, inv.email, now);
+  const from = emailFrom(c.env);
+  if (from && c.env.EMAIL) {
+    c.executionCtx.waitUntil(c.env.EMAIL.send(passwordSetEmail(from, inv.email, false, brand.name))
+      .catch((err) => console.error(JSON.stringify({ event: "password_email_failed", error: String(err).slice(0, 200) }))));
+  }
+  // First-time set-up: signed straight in (the spec's deliberate exception to "no sign-in after a reset").
+  return c.json({ ...(await hostedSession(c.env, inv.user_id, now)), client_slug: brand.slug });
 });
 
 const COOKIE = "osc_signin";

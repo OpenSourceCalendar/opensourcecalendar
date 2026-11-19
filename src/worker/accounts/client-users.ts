@@ -110,3 +110,38 @@ export async function removeSignIn(db: D1Database, calendarId: string, now: numb
     db.prepare("DELETE FROM users WHERE id = ? AND client_calendar_id = ?").bind(user.id, calendarId),
   ]);
 }
+
+export type OpenInvite = { user_id: string; email: string; client_calendar_id: string };
+
+/**
+ * The invite behind a token, if it's unused, not revoked, not expired, and its client sign-in still has the address it
+ * was sent to (so a link can never set the password of an account that moved to another email).
+ */
+export async function openInvite(db: D1Database, token: string, now: number): Promise<OpenInvite | null> {
+  return db.prepare(
+    `SELECT i.user_id, u.email, u.client_calendar_id FROM client_invites i JOIN users u ON u.id = i.user_id
+     WHERE i.token_hash = ? AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?
+       AND u.client_calendar_id IS NOT NULL AND u.email = i.email`,
+  ).bind(await sha256Hex(token), now).first<OpenInvite>();
+}
+
+/**
+ * Sets the password (and bumps the session version) and uses the invite up, in one batch: the password is written only
+ * while the invite is still open and the sign-in is still this client's with the invite's address (Remove sign-in or a
+ * resend may have run meanwhile). D1 runs a batch as one transaction, so of two accepts at once exactly one wins.
+ */
+export async function acceptInvite(db: D1Database, token: string, inv: OpenInvite, passwordHash: string, now: number): Promise<boolean> {
+  const hash = await sha256Hex(token);
+  const open = "token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?";
+  const [set, used] = await db.batch([
+    db.prepare(
+      `UPDATE users SET password_hash = ?, password_set_at = ?, session_version = session_version + 1, last_login_at = ?
+       WHERE id = ? AND client_calendar_id = ? AND email = ?
+         AND EXISTS (SELECT 1 FROM client_invites WHERE ${open} AND user_id = users.id AND email = users.email)`,
+    ).bind(passwordHash, now, now, inv.user_id, inv.client_calendar_id, inv.email, hash, now),
+    db.prepare(`UPDATE client_invites SET used_at = ? WHERE ${open} AND user_id = ? AND email = ?
+       AND EXISTS (SELECT 1 FROM users WHERE id = ? AND password_set_at = ?)`)
+      .bind(now, hash, now, inv.user_id, inv.email, inv.user_id, now),
+  ]);
+  return set.meta.changes === 1 && used.meta.changes === 1;
+}
