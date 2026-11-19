@@ -377,7 +377,7 @@ export function InvitePage() {
       const code = err instanceof ApiError ? err.error : "";
       if (code === "invite_invalid") return setInfo({ valid: false });
       setError(
-        code === "password_weak" ? "This password has shown up in a data breach or is too easy to guess. Please choose another."
+        code === "password_weak" ? "This password is too common or too easy to guess. Try a longer one, like a short sentence."
         : code === "password_too_long" ? "Use 256 characters or fewer."
         : code === "too_many_tries" ? "Too many tries. Wait 15 minutes and try again."
         : code === "too_large" ? "That's too long."

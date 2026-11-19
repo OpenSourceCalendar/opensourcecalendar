@@ -309,7 +309,7 @@ export function adminErrorText(e: unknown): string {
     case "password_too_long":
       return "Use 256 characters or fewer.";
     case "password_weak":
-      return "This password has shown up in a data breach or is too easy to guess. Please choose another.";
+      return "This password is too common or too easy to guess. Try a longer one, like a short sentence.";
     case "reauth_required":
       return "For safety, sign out and sign in again (an emailed link works) or enter your current password.";
     case "wrong_password":
