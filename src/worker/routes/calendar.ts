@@ -10,7 +10,7 @@ import { isClient } from "../billing/store";
 import { entitlements } from "../billing/entitlements";
 import type { AppEnv, Bindings, CalendarRow } from "../types";
 
-const RESERVED = new Set(["admin", "api", "app", "book", "m", "manage", "health", "images", "setup", "static", "assets", "www"]);
+const RESERVED = new Set(["admin", "api", "app", "book", "m", "manage", "health", "images", "setup", "static", "assets", "www", "login", "invite", "verify"]);
 export const Slug = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/)

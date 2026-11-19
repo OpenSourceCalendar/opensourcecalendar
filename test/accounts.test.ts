@@ -4,6 +4,7 @@ import { app } from "../src/worker/index";
 import { sha256Hex } from "../src/worker/lib/ids";
 import { testEnv, uniq } from "./helpers";
 import { signState } from "../src/worker/google/state";
+import { cleanUpLinks } from "../src/worker/accounts/store";
 
 const BASE = "https://book.example.test";
 type Sent = { to: string; subject: string; text: string };
@@ -380,5 +381,23 @@ describe("Google sign-in", () => {
     const { state, cookie } = await startGoogle(env);
     fakeGoogle({ sub, email: email(), email_verified: true });
     expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=client_account`);
+  });
+});
+
+describe("cleanup", () => {
+  it("drops old tries, invite counts and finished invites", async () => {
+    const { env } = envWith();
+    const now = Date.now();
+    const old = now - 8 * 86400_000;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO password_attempts (email, ip_key, at) VALUES ('old@x', 'k', ?), ('new@x', 'k', ?)").bind(old, now),
+      env.DB.prepare("INSERT INTO invite_attempts (agency_user_id, at) VALUES ('old', ?), ('new', ?)").bind(old, now),
+      env.DB.prepare("INSERT INTO client_invites (token_hash, user_id, email, created_at, expires_at) VALUES ('t-old', 'u', 'u@x', ?, ?), ('t-new', 'u', 'u@x', ?, ?)").bind(old, old + 1, now, now + 86400_000),
+    ]);
+    await cleanUpLinks(env.DB, now);
+    const left = await env.DB.prepare(
+      "SELECT (SELECT COUNT(*) FROM password_attempts WHERE email IN ('old@x','new@x')) AS p, (SELECT COUNT(*) FROM invite_attempts WHERE agency_user_id IN ('old','new')) AS i, (SELECT COUNT(*) FROM client_invites WHERE token_hash IN ('t-old','t-new')) AS c",
+    ).first();
+    expect(left).toEqual({ p: 1, i: 1, c: 1 });
   });
 });

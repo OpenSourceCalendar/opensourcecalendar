@@ -102,8 +102,15 @@ export async function useLink(db: D1Database, token: string, now: number): Promi
   return row ? { email: row.email, inviteHash: row.invite_hash } : null;
 }
 
+const DAY = 24 * HOUR;
 export async function cleanUpLinks(db: D1Database, now: number) {
-  await db.prepare("DELETE FROM login_links WHERE created_at < ?").bind(now - LINK_KEEP_MS).run();
+  await db.batch([
+    db.prepare("DELETE FROM login_links WHERE created_at < ?").bind(now - LINK_KEEP_MS),
+    // Wrong-try records are kept one day (the privacy policy says so); the limits only look back 15 minutes or an hour.
+    db.prepare("DELETE FROM password_attempts WHERE at < ?").bind(now - DAY),
+    db.prepare("DELETE FROM invite_attempts WHERE at < ?").bind(now - DAY),
+    db.prepare("DELETE FROM client_invites WHERE expires_at < ? OR used_at < ? OR revoked_at < ?").bind(now - 7 * DAY, now - 7 * DAY, now - 7 * DAY),
+  ]);
 }
 
 /**

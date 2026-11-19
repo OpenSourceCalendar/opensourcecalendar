@@ -74,6 +74,7 @@ describe("calendar", () => {
     const post = (json: unknown) => call("/api/v1/calendar", { method: "POST", who: { key, user: `u-${uniq()}` }, json });
     expect((await post({ slug: a.slug, time_zone: "UTC" })).status).toBe(409);
     expect((await post({ slug: "admin", time_zone: "UTC" })).status).toBe(400);
+    for (const slug of ["verify", "login", "invite"]) expect((await post({ slug, time_zone: "UTC" })).status).toBe(400);
     expect((await post({ slug: "Bad Slug", time_zone: "UTC" })).status).toBe(400);
     expect((await post({ slug: `ok-${uniq()}`, time_zone: "Mars/Olympus" })).status).toBe(400);
   });
