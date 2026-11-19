@@ -102,7 +102,7 @@ describe("email sign-in", () => {
     expect((await asOwner(env, s.token, "/calendar")).status).toBe(404); // signed in, no calendar yet
     const made = await asOwner(env, s.token, "/calendar", { method: "POST", json: { slug: `acct-${uniq()}`, time_zone: "America/Los_Angeles" } });
     expect(made.status).toBe(201);
-    expect(await (await asOwner(env, s.token, "/account")).json()).toEqual({ email: s.address });
+    expect(await (await asOwner(env, s.token, "/account")).json()).toEqual({ email: s.address, role: "account", has_password: false });
     expect(((await (await req(env, `/api/account/invite/${s.invite}`)).json()) as { valid: boolean }).valid).toBe(false);
   });
 
@@ -292,7 +292,7 @@ describe("Google sign-in", () => {
     const res = await callback(env, state, cookie);
     expect(landing(res)).toMatch(new RegExp(`^${BASE}/admin#login=`));
     const token = landing(res).split("#login=")[1];
-    expect(await (await asOwner(env, token, "/account")).json()).toEqual({ email: address });
+    expect(await (await asOwner(env, token, "/account")).json()).toEqual({ email: address, role: "account", has_password: false });
   });
 
   it("refuses a missing or wrong cookie, and a Calendar-connect state", async () => {

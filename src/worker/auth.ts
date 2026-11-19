@@ -4,6 +4,7 @@ import { newId, randomToken, sha256Hex } from "./lib/ids";
 import { signSession, verifySession } from "./lib/session";
 import { publicBase, signupOn } from "./accounts/config";
 import { createInvite } from "./accounts/store";
+import { clientBrand } from "./accounts/client-users";
 import type { AppEnv, AppRow, CalendarRow } from "./types";
 
 const encoder = new TextEncoder();
@@ -118,11 +119,15 @@ export async function hostedSession(env: AppEnv["Bindings"], userId: string, now
   return { token, expires_at: new Date(now + HOSTED_SESSION_TTL_MS).toISOString() };
 }
 
-/** GET /api/admin/account: the hosted account's email; 404 for host-app and password sessions. */
+/** GET /api/admin/account: who is signed in (role "client" = a White-label client's own sign-in); 404 for host-app and password sessions. */
 export async function accountInfo(c: Context<AppEnv>) {
   if (c.var.app.id !== HOSTED_APP) return c.json({ error: "not_found" }, 404);
-  const row = await c.env.DB.prepare("SELECT email FROM users WHERE id = ?").bind(c.var.userId).first<{ email: string }>();
-  return row ? c.json({ email: row.email }) : c.json({ error: "not_found" }, 404);
+  const row = await c.env.DB.prepare("SELECT email, client_calendar_id, password_hash IS NOT NULL AS has_password FROM users WHERE id = ?")
+    .bind(c.var.userId).first<{ email: string; client_calendar_id: string | null; has_password: number }>();
+  if (!row) return c.json({ error: "not_found" }, 404);
+  if (!row.client_calendar_id) return c.json({ email: row.email, role: "account", has_password: !!row.has_password });
+  const brand = await clientBrand(c.env.DB, row.client_calendar_id);
+  return c.json({ email: row.email, role: "client", has_password: !!row.has_password, business_name: brand?.name ?? "", login_path: brand ? `/login/${brand.slug}` : "/login" });
 }
 const STANDALONE_APP = "app_standalone";
 const STANDALONE_USER = "owner";

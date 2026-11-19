@@ -7,6 +7,7 @@ import { imageUrl } from "../lib/image-url";
 import { mergeBranding, mergeNotifications, mergeRules, parseBranding, parseNotifications, parseRules } from "../settings";
 import { emailEnabled } from "../email/send";
 import { isClient } from "../billing/store";
+import { entitlements } from "../billing/entitlements";
 import type { AppEnv, Bindings, CalendarRow } from "../types";
 
 const RESERVED = new Set(["admin", "api", "app", "book", "m", "manage", "health", "images", "setup", "static", "assets", "www"]);
@@ -87,7 +88,14 @@ calendar.post("/", agencyOnly, async (c) => {
   return c.json(calendarJson(row, c.env), 201);
 });
 
-calendar.get("/", requireCalendar, (c) => c.json(calendarJson(c.var.calendar, c.env)));
+/** What this calendar's plan allows, for the owner screens (a client's own sign-in can't read /billing). */
+async function accessJson(env: Bindings, cal: CalendarRow) {
+  const e = await entitlements(env, cal);
+  // `free` is the agency's own plan: a client calendar never shows it (a paused client must not learn the agency is on Free).
+  return { paused: e.paused, reminders: e.reminders, google_busy: e.googleBusy, footer_hidden: e.footerHidden, free: e.plan === "free" && !isClient(cal) };
+}
+
+calendar.get("/", requireCalendar, async (c) => c.json({ ...calendarJson(c.var.calendar, c.env), access: await accessJson(c.env, c.var.calendar) }));
 
 calendar.patch("/", requireCalendar, async (c) => {
   const body = await parseBody(
@@ -156,5 +164,6 @@ calendar.patch("/", requireCalendar, async (c) => {
   }
   // Re-read: an image upload may have landed while this request ran, and `next` would show the old key.
   const fresh = await c.env.DB.prepare("SELECT * FROM calendars WHERE id = ?").bind(cal.id).first<CalendarRow>();
-  return c.json(calendarJson(fresh ?? next, c.env));
+  const saved = fresh ?? next;
+  return c.json({ ...calendarJson(saved, c.env), access: await accessJson(c.env, saved) });
 });

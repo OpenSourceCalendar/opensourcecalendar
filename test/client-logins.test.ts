@@ -251,3 +251,27 @@ describe("invites", () => {
     expect((await invite(env, a.token, c.calendarId, u.email)).status).toBe(200);
   });
 });
+
+describe("what the screens need to know", () => {
+  it("/account says who this is", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    expect(await json(await req(env, "/api/admin/account", { token: a.token }))).toEqual({ email: `${a.userId}@example.test`, role: "account", has_password: false });
+    expect(await json(await req(env, "/api/admin/account", { token: u.token })))
+      .toEqual({ email: u.email, role: "client", has_password: false, business_name: "Client Co", login_path: `/login/${c.slug}` });
+  });
+
+  it("/calendar says whether a client is paused", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    const access = async () => (await json<{ access: { paused: boolean } }>(await req(env, "/api/admin/calendar", { token: u.token }))).access;
+    // No billing row: the agency isn't on White-label. `free` describes the agency's own plan, so a client never sees it.
+    expect(await access()).toEqual({ paused: true, reminders: true, google_busy: false, footer_hidden: true, free: false });
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    expect(await access()).toEqual({ paused: false, reminders: true, google_busy: true, footer_hidden: true, free: false });
+  });
+});
