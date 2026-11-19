@@ -2252,6 +2252,9 @@ a.status-link.is-warn {
   color: inherit;
   text-decoration: underline;
 }
+.viewing-bar :focus-visible {
+  outline-color: #fff;
+}
 @media (max-width: 859px) {
   .viewing-bar {
     padding: 10px 16px;

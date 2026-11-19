@@ -38,8 +38,9 @@ export function Plan({ billing, reload, clients }: { billing: Extract<BillingInf
     }
   }
 
-  // A live plan during grace (Pro after a White-label → Pro switch) is changed in the portal, e.g. back to White-label.
-  const liveInGrace = billing.has_customer && ["trialing", "active", "past_due"].includes(billing.status);
+  // A plan during grace (Pro after a White-label → Pro switch) is changed in the portal, e.g. back to White-label. Same
+  // statuses as the server's checkout refusal, so there's always a working button.
+  const liveInGrace = billing.has_customer && ["trialing", "active", "past_due", "unpaid", "incomplete", "paused"].includes(billing.status);
 
   // The Monthly/Yearly switch and the two plan cards, shown on Free and during the White-label grace month.
   const planCards = (

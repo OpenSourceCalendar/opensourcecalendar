@@ -17,8 +17,9 @@ export function SignedOut({ ended, onSignedIn }: { ended: boolean; onSignedIn: (
     // Hosted accounts log in on /login; the token was already cleared, so this flag is what remembers it.
     if (lastLoginWasHosted()) return setMode("hosted");
     let live = true;
-    // A fresh browser on a hosted install (accounts on): send it to /login, never to the standalone password box.
-    accountApi.config().then(
+    // A fresh browser on a hosted install (accounts on): send it to /login, never to the standalone password box. Not
+    // inside a frame: that's a host app's embed (its storage is often partitioned), which signs in from the app.
+    (window.self !== window.top ? Promise.reject() : accountApi.config()).then(
       () => live && setMode("hosted"),
       () =>
         // An empty password is always refused: 401 means password login exists, 404 means it doesn't.
