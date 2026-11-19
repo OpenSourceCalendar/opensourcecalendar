@@ -151,3 +151,14 @@ export async function addClient(env: typeof testEnv, token: string, name = "Clie
   if (res.status !== 201) throw new Error(`addClient: ${res.status} ${await res.text()}`);
   return { calendarId: ((await res.json()) as { id: string }).id, slug };
 }
+
+/** A White-label client's own sign-in (a users row tied to one client calendar) and its session token. */
+export async function clientUser(env: typeof testEnv, calendarId: string) {
+  const userId = `usr_${uniq()}`;
+  const email = `${userId}@example.test`;
+  const now = Date.now();
+  await env.DB.prepare("INSERT INTO users (id, email, created_at, last_login_at, client_calendar_id) VALUES (?, ?, ?, ?, ?)")
+    .bind(userId, email, now, now, calendarId).run();
+  const { token } = await hostedSession(env, userId, now);
+  return { userId, email, token };
+}

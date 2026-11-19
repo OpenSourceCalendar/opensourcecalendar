@@ -3,7 +3,7 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import { publicBase } from "../accounts/config";
-import { HOSTED_APP } from "../auth";
+import { agencyOnly, HOSTED_APP } from "../auth";
 import { billingOn, priceFor } from "../billing/config";
 import { FREE_MONTHLY_EMAIL_BOOKINGS, isPaid, LIVE_STATUSES } from "../billing/entitlements";
 import { bookingsThisMonth } from "../billing/limit";
@@ -21,6 +21,7 @@ const CHECKOUTS_PER_HOUR = 5;
 // Tags our sessions in the Stripe Dashboard (Stripe asks for a label with an 8-letter suffix).
 const INTEGRATION_ID = "osc-plan-checkout-qvbmtrzk";
 
+billing.use("*", agencyOnly);
 billing.use("*", async (c, next) => {
   if (!billingOn(c.env) || c.var.app.id !== HOSTED_APP) {
     return c.req.method === "GET" && c.req.path.endsWith("/billing") ? c.json({ enabled: false }) : c.json({ error: "not_found" }, 404);

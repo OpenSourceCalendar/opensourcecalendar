@@ -1,0 +1,110 @@
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { signSession } from "../src/worker/lib/session";
+import { HOSTED_APP } from "../src/worker/auth";
+import { app } from "../src/worker/index";
+import { clientCalendar, clientUser, hostedAccount, setBilling } from "./stripe-fake";
+import { BASE, hibpClean, req, setup } from "./password-helpers";
+
+const json = async <T>(res: Response) => (await res.json()) as T;
+beforeEach(() => void hibpClean());
+afterEach(() => vi.restoreAllMocks());
+
+describe("a client's own sign-in", () => {
+  it("always gets its own calendar, whatever X-Client says", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const mine = await clientCalendar(env, a.userId);
+    const other = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, mine.calendarId);
+    for (const client of [undefined, a.calendarId, other.calendarId, "cal_nope"]) {
+      expect((await json<{ id: string }>(await req(env, "/api/admin/calendar", { token: u.token, client }))).id).toBe(mine.calendarId);
+    }
+  });
+
+  it("every owner route (all of mountApi) acts on its own calendar, even with another calendar's X-Client", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const mine = await clientCalendar(env, a.userId);
+    const other = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, mine.calendarId);
+    // The agency makes the two calendars different, so "the same answer as the agency viewing mine" proves which one
+    // the client's call acted on.
+    const asAgency = (client: string, path: string, init: { method?: string; json?: unknown } = {}) => req(env, `/api/admin${path}`, { ...init, token: a.token, client });
+    const asClient = (path: string, init: { method?: string; json?: unknown } = {}) => req(env, `/api/admin${path}`, { ...init, token: u.token, client: other.calendarId });
+    const week = (open: number[]) => [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, open: open.includes(weekday), start_min: 540, end_min: 1020, breaks: [] }));
+    const date = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    const svc = (await json<{ id: string }>(await asAgency(mine.calendarId, "/services", { json: { name: "Mine svc", duration_min: 30 } }))).id;
+    await asAgency(other.calendarId, "/services", { json: { name: "Other svc", duration_min: 30 } });
+    await asAgency(mine.calendarId, "/availability/weekly", { method: "PUT", json: { days: week([0, 1, 2, 3, 4, 5, 6]) } });
+    await asAgency(other.calendarId, "/availability/weekly", { method: "PUT", json: { days: week([3]) } });
+    await asAgency(mine.calendarId, "/customers", { json: { first_name: "Mona", phone: "5035550111" } });
+    await asAgency(other.calendarId, "/customers", { json: { first_name: "Olga", phone: "5035550122" } });
+    await asAgency(other.calendarId, "/reminders", { json: { at: `${date}T18:00:00.000Z`, title: "Other reminder" } });
+    await asAgency(other.calendarId, "/calendar", { method: "PATCH", json: { branding: { business_name: "Other Co" } } });
+
+    for (const path of [
+      "/calendar", "/services", "/availability", "/customers", "/dashboard", "/google",
+      `/reminders?from=${date}T00:00:00.000Z&to=${date}T23:59:59.000Z`,
+      `/slots?service_id=${svc}&date=${date}`,
+      `/appointments?from=${date}T00:00:00.000Z&to=${date}T23:59:59.000Z`,
+    ]) {
+      const theirs = await asClient(path);
+      expect(theirs.status, path).toBe(200);
+      expect(await theirs.json(), path).toEqual(await (await asAgency(mine.calendarId, path)).json());
+    }
+
+    // Writes land on its own calendar too: a service, and an image (images is the last mountApi route).
+    await asClient("/services", { json: { name: "Drain check", duration_min: 30 } });
+    const names = async (client: string) => (await json<{ services: { name: string }[] }>(await asAgency(client, "/services"))).services.map((s) => s.name);
+    expect(await names(mine.calendarId)).toContain("Drain check");
+    expect(await names(other.calendarId)).not.toContain("Drain check");
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]); // as in images.test.ts
+    const up = await app.request(`${BASE}/api/admin/images/logo`, {
+      method: "PUT", headers: { Authorization: `Session ${u.token}`, "X-Client": other.calendarId, "Content-Type": "image/png" }, body: PNG,
+    }, env);
+    expect(up.ok).toBe(true);
+    const logo = async (client: string) => (await json<{ branding: { logo_url: string | null } }>(await asAgency(client, "/calendar"))).branding.logo_url;
+    expect(await logo(mine.calendarId)).not.toBeNull();
+    expect(await logo(other.calendarId)).toBeNull();
+  });
+
+  it("is refused (403) on billing, the client list, invites and making a calendar", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const mine = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, mine.calendarId);
+    const calls: [string, { method?: string; json?: unknown }][] = [
+      ["/api/admin/billing", {}],
+      ["/api/admin/billing/checkout", { json: { plan: "pro", interval: "month" } }],
+      ["/api/admin/billing/portal", { method: "POST" }],
+      ["/api/admin/clients", {}],
+      ["/api/admin/clients", { json: { business_name: "X", slug: "x-client-abc", time_zone: "America/Los_Angeles", owner_email: "x@example.test" } }],
+      [`/api/admin/clients/${mine.calendarId}/invite`, { json: { email: "x@example.test" } }],
+      [`/api/admin/clients/${mine.calendarId}/sign-in`, { method: "DELETE" }],
+      ["/api/admin/calendar", { json: { slug: "my-own-free-cal", time_zone: "America/Los_Angeles" } }],
+    ];
+    for (const [path, init] of calls) {
+      const res = await req(env, path, { ...init, token: u.token });
+      expect(res.status, `${init.method ?? (init.json ? "POST" : "GET")} ${path}`).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+    }
+  });
+
+  it("is signed out at once when its version moves on; a token without a version counts as version 0", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const old = await signSession("test-session-secret", { a: HOSTED_APP, u: a.userId }, Date.now(), 60_000);
+    expect((await req(env, "/api/admin/calendar", { token: old })).status).toBe(200);
+    await env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(a.userId).run();
+    expect((await req(env, "/api/admin/calendar", { token: old })).status).toBe(401);
+    expect((await req(env, "/api/admin/calendar", { token: a.token })).status).toBe(401);
+  });
+
+  it("the agency still reaches its billing and clients", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    await setBilling(env, a.userId, { plan: "white_label", status: "active" });
+    expect((await req(env, "/api/admin/billing", { token: a.token })).status).toBe(200);
+    expect((await req(env, "/api/admin/clients", { token: a.token })).status).toBe(200);
+  });
+});

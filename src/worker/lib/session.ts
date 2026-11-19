@@ -1,6 +1,7 @@
 import { toBase64Url } from "./ids";
 
-export type Session = { a: string; u: string; exp: number };
+/** v: the account's session_version when issued (0 if absent); t: when issued (0 = unknown, never "recent"). */
+export type Session = { a: string; u: string; exp: number; v: number; t: number };
 
 const enc = new TextEncoder();
 
@@ -19,8 +20,10 @@ async function hmac(secret: string, data: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`session:${data}`)));
 }
 
-export async function signSession(secret: string, who: { a: string; u: string }, now: number, ttlMs: number): Promise<string> {
-  const payload = toBase64Url(enc.encode(JSON.stringify({ a: who.a, u: who.u, exp: now + ttlMs })));
+/** `who.t`: the sign-in's issue time when re-issuing a token for the same sign-in (defaults to now = a real sign-in). */
+export async function signSession(secret: string, who: { a: string; u: string; v?: number; t?: number }, now: number, ttlMs: number): Promise<string> {
+  const claims = { a: who.a, u: who.u, exp: now + ttlMs, t: who.t ?? now, ...(who.v !== undefined && { v: who.v }) };
+  const payload = toBase64Url(enc.encode(JSON.stringify(claims)));
   return `${payload}.${toBase64Url(await hmac(secret, payload))}`;
 }
 
@@ -33,9 +36,9 @@ export async function verifySession(secret: string, token: string, now: number):
   const raw = fromBase64Url(payload);
   if (!raw) return null;
   try {
-    const s = JSON.parse(new TextDecoder().decode(raw)) as Session;
+    const s = JSON.parse(new TextDecoder().decode(raw)) as { a?: unknown; u?: unknown; exp?: unknown; v?: unknown; t?: unknown };
     if (typeof s.a !== "string" || typeof s.u !== "string" || typeof s.exp !== "number" || s.exp < now) return null;
-    return { a: s.a, u: s.u, exp: s.exp };
+    return { a: s.a, u: s.u, exp: s.exp, v: typeof s.v === "number" ? s.v : 0, t: typeof s.t === "number" ? s.t : 0 };
   } catch {
     return null;
   }

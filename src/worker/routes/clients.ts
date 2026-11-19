@@ -2,7 +2,7 @@
 // (not /api/v1); 404 for sessions that aren't hosted accounts.
 import { Hono } from "hono";
 import { z } from "zod";
-import { HOSTED_APP } from "../auth";
+import { agencyOnly, HOSTED_APP } from "../auth";
 import { billed, canAddClients, entitlementsFrom } from "../billing/entitlements";
 import { accountCalendars, getBilling, homeCalendar, isClient } from "../billing/store";
 import { newId } from "../lib/ids";
@@ -16,6 +16,7 @@ export const DEFAULT_CLIENT_LIMIT = 50;
 
 export const clients = new Hono<AppEnv>();
 
+clients.use("*", agencyOnly);
 clients.use("*", async (c, next) => {
   if (c.var.app.id !== HOSTED_APP) return c.json({ error: "not_found" }, 404);
   await next();

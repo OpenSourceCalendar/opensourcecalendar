@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { HOSTED_APP, requireCalendar } from "../auth";
+import { agencyOnly, HOSTED_APP, requireCalendar } from "../auth";
 import { newId } from "../lib/ids";
 import { isTimeZone, parseBody } from "../lib/http";
 import { imageUrl } from "../lib/image-url";
@@ -46,7 +46,7 @@ export async function slugTaken(db: D1Database, slug: string, exceptId?: string)
 
 export const calendar = new Hono<AppEnv>();
 
-calendar.post("/", async (c) => {
+calendar.post("/", agencyOnly, async (c) => {
   const body = await parseBody(c, z.object({ slug: Slug, time_zone: TimeZone }));
   if (!body.ok) return body.response;
   const db = c.env.DB;
