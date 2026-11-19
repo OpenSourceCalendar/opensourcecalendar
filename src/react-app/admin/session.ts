@@ -79,11 +79,24 @@ export function setToken(token: string, mode?: "password" | "hosted"): void {
     writeLocal(TOKEN, token);
     writeLocal(MODE, "hosted");
     writeLocal(LAST_LOGIN, "hosted");
+    // A new sign-in starts on its own calendar: a client picked by an earlier sign-in in this browser doesn't carry over.
+    activeClient = null;
+    writeLocal(CLIENT, null);
     return;
   }
   write(TOKEN, token);
   write(MODE, mode ?? null);
 }
+
+/** A new token for the same hosted sign-in (after a password change or "sign out of all devices"): keeps this tab's client. */
+export function refreshHostedToken(token: string): void {
+  writeLocal(TOKEN, token);
+}
+
+const LOGIN_PAGE = "bc_login_page";
+/** Where this browser last signed in (a client's own /login/<slug>, or /login), for the signed-out screen. */
+export const loginPage = () => readLocal(LOGIN_PAGE) ?? "/login";
+export const setLoginPage = (path: string) => writeLocal(LOGIN_PAGE, path);
 
 export function clearToken(): void {
   write(TOKEN, null);

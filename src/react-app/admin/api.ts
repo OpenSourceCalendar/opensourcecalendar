@@ -43,6 +43,21 @@ export interface AdminCalendar {
   notifications: Notifications;
   /** False when this install has no sending address set up, so nothing is emailed. */
   email_enabled: boolean;
+  access?: { paused: boolean; reminders: boolean; google_busy: boolean; footer_hidden: boolean; free: boolean };
+}
+
+export interface AccountInfo {
+  email: string;
+  role: "account" | "client";
+  has_password: boolean;
+  /** Client sign-ins only. */
+  business_name?: string;
+  login_path?: string;
+}
+export interface ClientSignIn {
+  status: "not_invited" | "invited" | "signed_in";
+  email: string | null;
+  last_login_at: string | null;
 }
 
 let onUnauthorized = () => {};
@@ -289,6 +304,28 @@ export function adminErrorText(e: unknown): string {
       return "Adding clients is part of White-label.";
     case "plan_required":
       return "Google Calendar sync isn't on for this business's plan.";
+    case "password_too_short":
+      return "Use at least 15 characters. A short sentence works well.";
+    case "password_too_long":
+      return "Use 256 characters or fewer.";
+    case "password_weak":
+      return "This password has shown up in a data breach or is too easy to guess. Please choose another.";
+    case "reauth_required":
+      return "For safety, sign out and sign in again (an emailed link works) or enter your current password.";
+    case "wrong_password":
+      return "That current password isn't right.";
+    case "too_many_tries":
+      return "Too many tries. Wait 15 minutes, or sign in again with an emailed link.";
+    case "email_in_use":
+      return "This email already has an account here. Use a different email for this client's sign-in.";
+    case "signed_in":
+      return "Remove sign-in first to invite a different email.";
+    case "too_many_invites":
+      return "Too many invites this hour. Try again later.";
+    case "not_available":
+      return "Client sign-ins aren't available on this install.";
+    case "forbidden":
+      return "That isn't available for this account.";
     case "network":
       return "We couldn't reach the server. Check your connection and try again.";
     case "unauthorized":
@@ -354,7 +391,7 @@ export const adminApi = {
   login: (password: string) =>
     request<{ token: string }>("/login", { method: "POST", json: { password }, auth: false }),
   calendar: () => request<AdminCalendar>("/calendar"),
-  account: () => request<{ email: string }>("/account"),
+  account: () => request<AccountInfo>("/account"),
   createCalendar: (input: { slug: string; time_zone: string }) =>
     request<AdminCalendar>("/calendar", { method: "POST", json: input }),
   updateCalendar: (patch: { slug?: string; time_zone?: string; rules?: Partial<Rules>; branding?: Partial<Branding>; notifications?: Partial<Notifications> }) =>
@@ -372,6 +409,12 @@ export const adminApi = {
   clients: () => request<ClientList>("/clients"),
   addClient: (input: { business_name: string; slug: string; time_zone: string; owner_email: string }) =>
     request<AdminCalendar>("/clients", { method: "POST", json: input }),
+  setPassword: (input: { password: string; current_password?: string }) =>
+    request<{ token: string; expires_at: string }>("/password", { method: "POST", json: input }),
+  signOutEverywhere: () => request<{ token: string; expires_at: string }>("/sign-out-everywhere", { method: "POST" }),
+  inviteClient: (id: string, email: string) =>
+    request<{ signin: ClientSignIn }>(`/clients/${enc(id)}/invite`, { method: "POST", json: { email } }),
+  removeSignIn: (id: string) => request<void>(`/clients/${enc(id)}/sign-in`, { method: "DELETE" }),
 };
 
 /** The account's plan, as GET /billing reports it. `enabled: false` when billing is off (self-hosted, or not a hosted account). */
@@ -404,7 +447,16 @@ export const canAddClients = (b: BillingInfo | null): boolean => b?.enabled === 
 
 /** A hosted account's businesses (GET /clients): its own calendar, then its clients. */
 export interface ClientList {
-  calendars: { id: string; business_name: string; slug: string; time_zone: string; home: boolean; paused: boolean }[];
+  calendars: {
+    id: string;
+    business_name: string;
+    slug: string;
+    time_zone: string;
+    home: boolean;
+    paused: boolean;
+    notification_email: string;
+    signin: ClientSignIn;
+  }[];
   /** Most calendars allowed, the agency's own included. */
   limit: number;
   count: number;

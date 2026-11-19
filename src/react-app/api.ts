@@ -185,7 +185,16 @@ export function errorText(e: unknown): string {
   }
 }
 
-export interface AccountConfig { google: boolean; email: boolean; turnstile_site_key: string | null; public_url: string }
+export interface AccountConfig { google: boolean; email: boolean; passwords: boolean; turnstile_site_key: string | null; public_url: string }
+/** A calendar's look for its sign-in pages. */
+export interface LoginBrand {
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  color: string;
+  style: string;
+}
+export type HostedSession = { token: string; expires_at: string; client_slug: string | null };
 const ACCOUNT = "/api/account";
 export const accountApi = {
   config: () => request<AccountConfig>("/config", { base: ACCOUNT }),
@@ -193,4 +202,11 @@ export const accountApi = {
   emailLink: (input: { email: string; invite?: string; turnstile_token?: string }) =>
     request<{ sent: true }>("/email-link", { method: "POST", json: input, base: ACCOUNT }),
   verify: (token: string) => request<{ token: string; expires_at: string; email: string }>("/email-link/verify", { method: "POST", json: { token }, base: ACCOUNT }),
+  passwordLogin: (input: { email: string; password: string; turnstile_token?: string }) =>
+    request<HostedSession>("/password-login", { method: "POST", json: input, base: ACCOUNT }),
+  loginPage: (slug: string) => request<LoginBrand>(`/login-page/${enc(slug)}`, { base: ACCOUNT }),
+  inviteCheck: (token: string) =>
+    request<{ valid: false } | ({ valid: true; email: string } & LoginBrand)>("/client-invite/check", { method: "POST", json: { token }, base: ACCOUNT }),
+  inviteAccept: (token: string, password: string) =>
+    request<HostedSession>("/client-invite/accept", { method: "POST", json: { token, password }, base: ACCOUNT }),
 };
