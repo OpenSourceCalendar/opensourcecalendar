@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { DUMMY_HASH, hashPassword, needsRehash, passwordProblem, passwordsOn, verifyPassword } from "../src/worker/accounts/password";
+import { weakPassword } from "../src/worker/accounts/breach";
 import { testEnv } from "./helpers";
 
 const PW = "correct horse battery staple";
@@ -73,5 +74,42 @@ describe("rules", () => {
     expect(passwordsOn(hosted)).toBe(true);
     expect(passwordsOn({ ...hosted, PASSWORD_PEPPER: undefined })).toBe(false);
     expect(passwordsOn(testEnv)).toBe(false);
+  });
+});
+
+const sha1 = async (s: string) =>
+  [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+const fetcherWith = (body: string | Error) =>
+  vi.fn(async () => (body instanceof Error ? Promise.reject(body) : new Response(body))) as unknown as typeof fetch & { mock: { calls: unknown[][] } };
+
+describe("weakPassword", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("breached when HaveIBeenPwned lists the rest of the hash; only 5 characters are sent, with padding", async () => {
+    const h = await sha1(PW);
+    const f = fetcherWith(`0000000000000000000000000000000000A:0\r\n${h.slice(5)}:12\r\n`);
+    expect(await weakPassword(PW, [], f)).toBe("breached");
+    expect(f.mock.calls[0][0]).toBe(`https://api.pwnedpasswords.com/range/${h.slice(0, 5)}`);
+    expect((f.mock.calls[0][1] as RequestInit).headers).toEqual({ "Add-Padding": "true" });
+  });
+
+  it("padding rows (count 0) and other suffixes don't count", async () => {
+    const h = await sha1(PW);
+    expect(await weakPassword(PW, [], fetcherWith(`${h.slice(5)}:0\r\nFFFFF:3`))).toBeNull();
+  });
+
+  it("allowed, and logged, when HaveIBeenPwned can't be reached", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await weakPassword(PW, [], fetcherWith(new Error("timeout")))).toBeNull();
+    expect(String(log.mock.calls[0][0])).toContain("hibp_skipped");
+  });
+
+  it("guessable: the email, its first part, the business name, or the product name", async () => {
+    const f = fetcherWith("");
+    expect(await weakPassword("maria.lopez likes long passwords", ["maria.lopez@example.test"], f)).toBe("guessable");
+    expect(await weakPassword("best plumbing in tillamook!!", [null, "Best Plumbing"], f)).toBe("guessable");
+    expect(await weakPassword("open source calendar rocks 123", [], f)).toBe("guessable");
+    expect(f.mock.calls.length).toBe(0); // no need to ask
+    expect(await weakPassword(PW, ["maria.lopez@example.test", "Best Plumbing"], f)).toBeNull();
   });
 });
