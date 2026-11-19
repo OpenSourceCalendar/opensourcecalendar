@@ -33,6 +33,8 @@ export function Shell({
   paused,
   showClients,
   viewing,
+  accountLink,
+  clientUser,
   children,
 }: {
   calendar: AdminCalendar;
@@ -52,6 +54,10 @@ export function Shell({
   showClients: boolean;
   /** A client's calendar is open from the Clients page: its name and the way back. */
   viewing: { name: string; onBack: () => void } | null;
+  /** Hosted sign-ins get an Account link (password, devices) in the menu's foot. */
+  accountLink: boolean;
+  /** Signed in as a White-label client: banners name the provider instead of plans. */
+  clientUser: boolean;
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -160,6 +166,16 @@ export function Shell({
             <Icon name="plus" />
             New Entry
           </button>
+          {accountLink && (
+            <a
+              className="link muted side-signout"
+              href="/admin/account"
+              aria-current={path === "/admin/account" ? "page" : undefined}
+              onClick={(e) => go(e, "/admin/account")}
+            >
+              Account
+            </a>
+          )}
           {canSignOut() && (
             <button type="button" className="link muted side-signout" onClick={onSignOut}>
               Sign out
@@ -177,7 +193,7 @@ export function Shell({
             </button>
           </div>
         )}
-        <Banners billing={billing} client={client} paused={paused} navigate={navigate} />
+        <Banners billing={billing} client={client} paused={paused} clientUser={clientUser} navigate={navigate} />
         <div className="admin-main-inner">{children}</div>
       </main>
     </div>

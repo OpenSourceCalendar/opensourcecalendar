@@ -1,7 +1,22 @@
 import type { BillingInfo } from "./api";
 
 /** Top-of-screen notices: a failed payment, a paused client, or the Free email limit reached this month. */
-export function Banners({ billing, client, paused, navigate }: { billing: BillingInfo | null; client: boolean; paused: boolean; navigate: (path: string) => void }) {
+export function Banners({
+  billing,
+  client,
+  paused,
+  clientUser,
+  navigate,
+}: {
+  billing: BillingInfo | null;
+  client: boolean;
+  paused: boolean;
+  /** Signed in as a White-label client (not the agency). */
+  clientUser: boolean;
+  navigate: (path: string) => void;
+}) {
+  // A client's own sign-in: no plans or prices, just who to ask.
+  if (clientUser) return paused ? <div className="banner" role="status">Online booking is paused. Please contact your provider.</div> : null;
   if (!billing?.enabled) return null;
   const toPlan = (text: string) => (
     <button type="button" className="link" onClick={() => navigate("/admin/plan")}>

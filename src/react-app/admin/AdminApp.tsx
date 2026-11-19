@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../api";
 import { applyBrand } from "../theme";
-import { adminApi, canAddClients, onWhiteLabel, setUnauthorizedHandler, type AdminCalendar, type BillingInfo, type ClientList, type Customer, type GoogleStatus } from "./api";
+import {
+  adminApi,
+  canAddClients,
+  onWhiteLabel,
+  setUnauthorizedHandler,
+  type AccountInfo,
+  type AdminCalendar,
+  type BillingInfo,
+  type ClientList,
+  type Customer,
+  type GoogleStatus,
+} from "./api";
+import { Account } from "./Account";
 import { AddClient } from "./AddClient";
 import { Availability } from "./Availability";
 import { Branding } from "./Branding";
@@ -29,7 +41,10 @@ type State =
   | { kind: "signed-out"; ended: boolean }
   | { kind: "setup" }
   | { kind: "error" }
-  | { kind: "ready"; calendar: AdminCalendar };
+  /** A client's own sign-in whose calendar was deleted by the agency. */
+  | { kind: "gone" }
+  /** `account` is null when /account couldn't be read (a host-app session, or a failure): treated as the agency. */
+  | { kind: "ready"; calendar: AdminCalendar; account: AccountInfo | null };
 
 /** What every page gets. */
 export interface PageProps {
@@ -103,7 +118,8 @@ export function AdminApp() {
     // A fresh link while the calendar is open reloads quietly, so nothing being typed is lost unless the business changes.
     if (!ready.current) setState({ kind: "loading" });
     try {
-      const calendar = await loadCalendar();
+      // The role comes with the calendar, so a client's screens never ask for billing or the client list.
+      const [calendar, account] = await Promise.all([loadCalendar(), adminApi.account().catch(() => null)]);
       if (turn !== loads.current) return; // a newer link has taken over
       const before = lastCalendarId();
       if (fromLink.current && before && before !== calendar.id) {
@@ -116,13 +132,21 @@ export function AdminApp() {
       }
       fromLink.current = false;
       setLastCalendarId(calendar.id);
-      setState({ kind: "ready", calendar });
+      setState({ kind: "ready", calendar, account });
     } catch (e) {
       if (turn !== loads.current) return;
       fromLink.current = false;
       if (!(e instanceof ApiError)) throw e;
-      if (e.status === 404) setState({ kind: "setup" });
-      else if (e.status !== 401) setState({ kind: "error" }); // 401 is handled below
+      if (e.status === 404) {
+        // No calendar: an agency sets one up; a client whose calendar was removed can't, so it's told so instead.
+        let gone = false;
+        try {
+          gone = (await adminApi.account()).role === "client";
+        } catch {
+          // Unknown: Setup, as before.
+        }
+        if (turn === loads.current) setState(gone ? { kind: "gone" } : { kind: "setup" });
+      } else if (e.status !== 401) setState({ kind: "error" }); // 401 is handled below
     }
   }, [go]);
 
@@ -159,6 +183,9 @@ export function AdminApp() {
   }, [load]);
 
   const calendar = state.kind === "ready" ? state.calendar : null;
+  const role = state.kind === "ready" ? (state.account?.role ?? null) : null;
+  // Signed in as a White-label client: its own calendar only, no plans, no client list.
+  const clientUser = role === "client";
 
   // Google Calendar status for the menu and the Google page: loaded with each calendar, and again when the
   // owner comes back to this tab (at most once a minute) or leaves the Google page.
@@ -191,8 +218,9 @@ export function AdminApp() {
   }, []);
   useEffect(() => {
     setBilling(null);
-    if (calendarId) loadBilling();
-  }, [calendarId, loadBilling]);
+    // A client's plan is the agency's business: its screens look as they do without billing.
+    if (calendarId) clientUser ? setBilling({ enabled: false }) : loadBilling();
+  }, [calendarId, clientUser, loadBilling]);
 
   // The account's businesses, for the White-label Clients page (hosted accounts only; others get a 404 and no list).
   // Reloaded when another business opens, this one's name changes, or the Clients page changes a sign-in.
@@ -203,10 +231,11 @@ export function AdminApp() {
   const reloadClients = () => setClientsKey((n) => n + 1);
   const businessName = calendar?.branding.business_name;
   useEffect(() => {
+    if (clientUser) return setClients(null);
     if (!calendarId) return;
     // Only a 404 means "no list" (not a hosted account); after any other failure it stays unknown until the next load.
     adminApi.clients().then(setClients, (e) => e instanceof ApiError && e.status === 404 && setClients(null));
-  }, [calendarId, businessName, clientsKey]);
+  }, [calendarId, businessName, clientsKey, clientUser]);
 
   const onGooglePage = path === "/admin/google";
   const wasOnGooglePage = useRef(false);
@@ -292,9 +321,27 @@ export function AdminApp() {
       <Setup
         onCreated={(created) => {
           setLastCalendarId(created.id);
-          setState({ kind: "ready", calendar: created });
+          setState({ kind: "ready", calendar: created, account: null });
+          // The role isn't known yet on a first setup; read it so the Account link shows.
+          adminApi.account().then(
+            (account) => setState((s) => (s.kind === "ready" && s.calendar.id === created.id ? { ...s, account } : s)),
+            () => {},
+          );
         }}
       />
+    );
+  }
+  if (state.kind === "gone") {
+    return (
+      <div className="admin-center">
+        <main className="admin-card stack">
+          <h1 className="title">This calendar is no longer available</h1>
+          <p className="lede">Please contact your provider if you think this is a mistake.</p>
+          <button type="button" className="btn btn-primary" onClick={leave}>
+            Sign out
+          </button>
+        </main>
+      </div>
     );
   }
   if (state.kind === "error") {
@@ -316,7 +363,8 @@ export function AdminApp() {
     notify: setToast,
     navigate,
     setDirty,
-    onCalendar: (next) => setState({ kind: "ready", calendar: next }),
+    // A saved calendar may come back without `access`; keep the one we had.
+    onCalendar: (next) => setState({ kind: "ready", calendar: { ...next, access: next.access ?? state.calendar.access }, account: state.account }),
   };
   const customerId = path.startsWith("/admin/customers/") ? decodeURIComponent(path.slice("/admin/customers/".length)) : null;
   const known = NAV.find((n) => n.path === path);
@@ -324,8 +372,9 @@ export function AdminApp() {
   // Without a list (not a hosted account) it's the account's own calendar. With one that doesn't have this calendar yet
   // (still loading, or just added), whether it's a client or paused isn't known, so the plan notes wait.
   const clientKnown = clients === null || !!shown;
-  const paused = !!shown?.paused;
-  const client = !!shown && !shown.home;
+  // A client's own sign-in has no list: the server says whether its calendar is paused.
+  const paused = clientUser ? !!state.calendar.access?.paused : !!shown?.paused;
+  const client = clientUser || (!!shown && !shown.home);
   const pageBilling = clientKnown ? billing : null;
   // On White-label (a trial included), or while the account still has client calendars.
   const showClients = !!clients && (onWhiteLabel(billing) || clients.calendars.length > 1);
@@ -343,8 +392,10 @@ export function AdminApp() {
       onSignOut={signOut}
       client={client || !clientKnown}
       paused={paused}
-      showClients={showClients}
-      viewing={viewing}
+      showClients={showClients && !clientUser}
+      viewing={clientUser ? null : viewing}
+      accountLink={!!state.account}
+      clientUser={clientUser}
     >
       {path === "/admin" ? (
         <Dashboard calendar={state.calendar} reloadKey={saves} navigate={navigate} onNewEntry={() => setEntry({})} />
@@ -361,11 +412,19 @@ export function AdminApp() {
       ) : path === "/admin/notifications" ? (
         <Notifications {...page} billing={pageBilling} paused={paused} />
       ) : path === "/admin/branding" ? (
-        <Branding {...page} billing={pageBilling} footerHidden={onWhiteLabel(pageBilling) || paused} paused={paused} />
+        <Branding
+          {...page}
+          billing={pageBilling}
+          footerHidden={onWhiteLabel(pageBilling) || paused || !!state.calendar.access?.footer_hidden}
+          paused={paused}
+          clientUser={clientUser}
+        />
       ) : path === "/admin/share" ? (
         <Share {...page} />
       ) : path === "/admin/google" ? (
-        <Google {...page} google={google} onGoogle={setGoogle} billing={pageBilling} paused={paused} />
+        <Google {...page} google={google} onGoogle={setGoogle} billing={pageBilling} paused={paused} canUpgrade={!clientUser} />
+      ) : path === "/admin/account" && state.account ? (
+        <Account account={state.account} notify={setToast} onAccount={(account) => setState({ kind: "ready", calendar: state.calendar, account })} />
       ) : path === "/admin/clients" && clients ? (
         <Clients clients={clients} onOpen={openClient} onAdd={canAddClients(billing) ? addClient : null} onChanged={reloadClients} notify={setToast} />
       ) : path === "/admin/plan" && billing?.enabled ? (

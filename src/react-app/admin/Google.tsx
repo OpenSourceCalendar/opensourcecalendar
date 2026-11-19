@@ -34,7 +34,15 @@ export function Google({
   onGoogle,
   billing,
   paused,
-}: PageProps & { google: GoogleStatus | null; onGoogle: (g: GoogleStatus) => void; billing: BillingInfo | null; paused: boolean }) {
+  canUpgrade = true,
+}: PageProps & {
+  google: GoogleStatus | null;
+  onGoogle: (g: GoogleStatus) => void;
+  billing: BillingInfo | null;
+  paused: boolean;
+  /** False for a client's own sign-in: no plans to see, just who to ask. */
+  canUpgrade?: boolean;
+}) {
   const [waiting, setWaiting] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "connect" | "sync" | "allday" | "calendar" | "disconnect">("");
@@ -121,12 +129,16 @@ export function Google({
 
   // On Free, or for a paused client, busy sync is off and connecting is refused, so the connect buttons lead to the Plan page.
   const free = onFree(billing) || paused;
-  const pausedNote = paused ? "Paused — subscribe to White-label to turn it back on." : "Paused on Free. Upgrade to turn it back on.";
-  const toPlan = (
+  const pausedNote = !canUpgrade
+    ? "Paused — please contact your provider."
+    : paused
+      ? "Paused — subscribe to White-label to turn it back on."
+      : "Paused on Free. Upgrade to turn it back on.";
+  const toPlan = canUpgrade ? (
     <button type="button" className="btn btn-primary btn-auto" onClick={() => navigate("/admin/plan")}>
       See plans
     </button>
-  );
+  ) : null;
 
   const header = (
     <header className="admin-band">
@@ -209,7 +221,13 @@ export function Google({
           </ul>
           {free ? (
             <>
-              <p>{paused ? "Subscribe to White-label to turn Google Calendar sync back on." : "Google Calendar sync is included in Pro."}</p>
+              <p>
+                {!canUpgrade
+                  ? "Google Calendar sync is paused. Please contact your provider."
+                  : paused
+                    ? "Subscribe to White-label to turn Google Calendar sync back on."
+                    : "Google Calendar sync is included in Pro."}
+              </p>
               {toPlan}
             </>
           ) : waitingNote || (

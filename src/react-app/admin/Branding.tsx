@@ -30,7 +30,22 @@ const LIMITS = { logo: 2, hero: 5 }; // MB
 
 type Kind = "logo" | "hero";
 
-export function Branding({ calendar, notify, setDirty, onCalendar, billing, footerHidden, paused }: PageProps & { billing: BillingInfo | null; footerHidden: boolean; paused: boolean }) {
+export function Branding({
+  calendar,
+  notify,
+  setDirty,
+  onCalendar,
+  billing,
+  footerHidden,
+  paused,
+  clientUser = false,
+}: PageProps & {
+  billing: BillingInfo | null;
+  footerHidden: boolean;
+  paused: boolean;
+  /** A White-label client's own sign-in: no footer setting (it names the product). */
+  clientUser?: boolean;
+}) {
   const b = calendar.branding;
   // White-label (or a paused client): the server never shows the footer. On Free it always does.
   const hiddenFooter = footerHidden;
@@ -202,14 +217,16 @@ export function Branding({ calendar, notify, setDirty, onCalendar, billing, foot
             <p className="hint">Images save as soon as you choose them.</p>
           </section>
 
-          <section className="card">
-            <label className="check-row">
-              <input type="checkbox" checked={showFooter} disabled={forcedFooter || hiddenFooter} onChange={(e) => set("powered_by", e.target.checked)} />
-              Show "Powered by Open Source Calendar" at the bottom
-            </label>
-            {forcedFooter && <p className="hint">Pro removes the footer.</p>}
-            {hiddenFooter && <p className="hint">{paused ? "Hidden for client businesses." : "Hidden on White-label."}</p>}
-          </section>
+          {!clientUser && (
+            <section className="card">
+              <label className="check-row">
+                <input type="checkbox" checked={showFooter} disabled={forcedFooter || hiddenFooter} onChange={(e) => set("powered_by", e.target.checked)} />
+                Show "Powered by Open Source Calendar" at the bottom
+              </label>
+              {forcedFooter && <p className="hint">Pro removes the footer.</p>}
+              {hiddenFooter && <p className="hint">{paused ? "Hidden for client businesses." : "Hidden on White-label."}</p>}
+            </section>
+          )}
           <p className="muted small">Save to update your live booking page.</p>
         </div>
 
