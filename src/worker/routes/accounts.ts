@@ -11,7 +11,7 @@ import { publicBase, signupOn } from "../accounts/config";
 import { passwordSetEmail, signInEmail } from "../accounts/email";
 import { DUMMY_HASH, hashPassword, needsRehash, passwordProblem, passwordsOn, verifyPassword } from "../accounts/password";
 import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
-import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, revokeTokens, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
+import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
 import { emailFrom } from "../email/send";
 import { exchangeCode, googleConfig, signInUrl } from "../google/client";
 import { parseBody } from "../lib/http";
@@ -167,18 +167,16 @@ accounts.post("/client-invite/accept", smallBody, async (c) => {
   await forgetAttempt(db, attempt.id);
   // Checked before the invite is used, so a refused password doesn't burn the link.
   if (await weakPassword(body.data.password, [inv.email, brand.name])) return c.json({ error: "password_weak" }, 400);
-  if (!(await acceptInvite(db, body.data.token, inv, await hashPassword(c.env, body.data.password), now))) {
-    return c.json({ error: "invite_invalid" }, 400);
-  }
-  // Any other open invite or emailed sign-in link for this sign-in stops working.
-  await revokeTokens(db, inv.user_id, inv.email, now);
+  // Also stops this sign-in's other open invites and emailed sign-in links (same batch).
+  const version = await acceptInvite(db, body.data.token, inv, await hashPassword(c.env, body.data.password), now);
+  if (version === null) return c.json({ error: "invite_invalid" }, 400);
   const from = emailFrom(c.env);
   if (from && c.env.EMAIL) {
     c.executionCtx.waitUntil(c.env.EMAIL.send(passwordSetEmail(from, inv.email, false, brand.name))
       .catch((err) => console.error(JSON.stringify({ event: "password_email_failed", error: String(err).slice(0, 200) }))));
   }
   // First-time set-up: signed straight in (the spec's deliberate exception to "no sign-in after a reset").
-  return c.json({ ...(await hostedSession(c.env, inv.user_id, now)), client_slug: brand.slug });
+  return c.json({ ...(await hostedSession(c.env, inv.user_id, now, now, version)), client_slug: brand.slug });
 });
 
 const COOKIE = "osc_signin";

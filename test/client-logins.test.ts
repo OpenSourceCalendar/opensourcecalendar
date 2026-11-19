@@ -312,8 +312,36 @@ describe("accepting an invite", () => {
   it("two accepts at once: exactly one wins", async () => {
     const { env, sent } = setup();
     const i = await invited(env, sent);
+    const version = () => env.DB.prepare("SELECT session_version AS v FROM users WHERE client_calendar_id = ?").bind(i.c.calendarId).first<{ v: number }>();
+    const before = (await version())!.v;
     const res = await Promise.all([0, 1, 2].map(() => req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } })));
     expect(res.map((r) => r.status).sort()).toEqual([200, 400, 400]);
+    for (const r of res.filter((x) => x.status === 400)) expect(await json(r)).toEqual({ error: "invite_invalid" });
+    expect((await version())!.v).toBe(before + 1);
+  });
+
+  it("accepting uses this invite and revokes the sign-in's other open invites and links", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    const uid = (await env.DB.prepare("SELECT id FROM users WHERE client_calendar_id = ?").bind(i.c.calendarId).first<{ id: string }>())!.id;
+    // As if another open invite and an emailed sign-in link existed (e.g. a resend racing this accept).
+    await env.DB.prepare("INSERT INTO client_invites (token_hash, user_id, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+      .bind(`other-${uniq()}`, uid, i.address, Date.now(), Date.now() + 86_400_000).run();
+    await req(env, "/api/account/email-link", { json: { email: i.address } });
+    const openLinks = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM login_links WHERE email = ? AND used_at IS NULL").bind(i.address).first<{ n: number }>())!.n;
+    expect(await openLinks()).toBe(1);
+    expect((await req(env, "/api/account/client-invite/accept", { json: { token: i.token, password: NEW } })).status).toBe(200);
+    const rows = (await env.DB.prepare("SELECT used_at, revoked_at FROM client_invites WHERE user_id = ? ORDER BY created_at").bind(uid).all<{ used_at: number | null; revoked_at: number | null }>()).results;
+    expect(rows.filter((r) => r.used_at !== null && r.revoked_at === null)).toHaveLength(1);
+    expect(rows.filter((r) => r.used_at === null && r.revoked_at === null)).toHaveLength(0);
+    expect(await openLinks()).toBe(0);
+  });
+
+  it("check on a valid token whose calendar is gone says not valid", async () => {
+    const { env, sent } = setup();
+    const i = await invited(env, sent);
+    await env.DB.prepare("UPDATE users SET client_calendar_id = ? WHERE client_calendar_id = ?").bind(`cal_gone_${uniq()}`, i.c.calendarId).run();
+    expect(await json(await req(env, "/api/account/client-invite/check", { json: { token: i.token } }))).toEqual({ valid: false });
   });
 
   it("a weak password is refused without using up the invite", async () => {
