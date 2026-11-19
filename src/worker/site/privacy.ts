@@ -41,6 +41,8 @@ export function privacyPage(login?: string) {
 
 <h3>When you create an account</h3>
 <p>Your email address, the ID of your Google account if you sign in with Google (not your Google password or calendar), and when the account was created and last used. When you ask for a sign-in link, we keep a scrambled (hashed) form of your network address for up to 2 days, to stop sign-in emails being abused.</p>
+<p>If you set a password, we keep only a scrambled, one-way form of it (salted and mixed with a secret key kept apart from our database), never your password. When you choose a password we check whether it has appeared in known data breaches by sending the first 5 characters of its SHA-1 fingerprint to <a href="https://haveibeenpwned.com/Passwords">HaveIBeenPwned</a>; the password itself never leaves our service. Records of sign-in attempts are kept for one day to stop password guessing.</p>
+<p>If an agency set up your booking calendar for you (White-label), that agency can open your calendar to help you, including your bookings and customers.</p>
 
 <h3>When a business pays for a plan</h3>
 <p>Payments are handled by Stripe, so card details go to Stripe and never to us; we never see or store card numbers. We store the Stripe customer and subscription IDs, the plan, its status and the relevant dates (such as when a trial or billing period ends).</p>

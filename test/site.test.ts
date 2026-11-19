@@ -60,6 +60,13 @@ describe("website pages", () => {
     expect(res.status).toBe(301);
     expect(res.headers.get("location")).toBe("https://opensourcecalendar.com/privacy?x=1");
   });
+
+  it("explains passwords, the breach check and agency access", async () => {
+    const html = await (await app.request("/privacy", {}, siteOn)).text();
+    expect(html).toContain("HaveIBeenPwned");
+    expect(html).toContain("never your password");
+    expect(html).toContain("agency");
+  });
 });
 
 describe("waitlist form", () => {
