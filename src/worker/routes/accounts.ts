@@ -1,10 +1,13 @@
 // Hosted sign-up and log-in (invite-only). Everything here 404s unless signupOn(env).
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { hostedSession } from "../auth";
+import { forgetAttempt, ipKey, startAttempt } from "../accounts/attempts";
 import { publicBase, signupOn } from "../accounts/config";
 import { signInEmail } from "../accounts/email";
+import { DUMMY_HASH, hashPassword, needsRehash, passwordsOn, verifyPassword } from "../accounts/password";
 import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
 import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
 import { emailFrom } from "../email/send";
@@ -25,6 +28,13 @@ accounts.get("/config", (c) =>
 accounts.get("/invite/:token", async (c) =>
   c.json({ valid: await inviteOpen(c.env.DB, await sha256Hex(c.req.param("token")), Date.now()) }));
 
+/** Turnstile when this install has it (production); true otherwise. */
+async function humanCheck(c: Context<AppEnv>, token: string | undefined, action: string): Promise<boolean> {
+  if (!c.env.TURNSTILE_SECRET) return true;
+  const hosts = [...new Set([new URL(publicBase(c.env)).hostname, new URL(c.req.url).hostname])];
+  return verifyTurnstile(c.env.TURNSTILE_SECRET, token ?? "", c.req.header("CF-Connecting-IP") ?? null, { action, hostnames: hosts });
+}
+
 const LinkInput = z.object({
   email: z.email().max(254),
   invite: z.string().max(200).optional(),
@@ -36,11 +46,7 @@ accounts.post("/email-link", async (c) => {
   const body = await parseBody(c, LinkInput);
   if (!body.ok) return body.response;
   const ip = c.req.header("CF-Connecting-IP") ?? null;
-  if (c.env.TURNSTILE_SECRET) {
-    const hosts = [...new Set([new URL(publicBase(c.env)).hostname, new URL(c.req.url).hostname])];
-    const ok = await verifyTurnstile(c.env.TURNSTILE_SECRET, body.data.turnstile_token ?? "", ip, { action: "login", hostnames: hosts });
-    if (!ok) return c.json({ error: "turnstile_failed" }, 400);
-  }
+  if (!(await humanCheck(c, body.data.turnstile_token, "login"))) return c.json({ error: "turnstile_failed" }, 400);
   const work = sendLink(c.env, normalizeEmail(body.data.email), body.data.invite ?? null, ip ?? "", Date.now())
     .catch((err) => console.error(JSON.stringify({ event: "login_link_failed", error: String(err).slice(0, 200) })));
   c.executionCtx.waitUntil(work);
@@ -75,6 +81,46 @@ accounts.post("/email-link/verify", async (c) => {
   if (!("user" in found)) return c.json({ error: "invite_used" }, 400);
   await touchLogin(db, found.user.id, now);
   return c.json({ ...(await hostedSession(c.env, found.user.id, now)), email: found.user.email });
+});
+
+/** Password routes take small bodies only, so a huge "password" can't burn CPU. */
+export const smallBody = bodyLimit({ maxSize: 4 * 1024, onError: (c) => c.json({ error: "too_large" }, 413) });
+
+const PasswordLogin = z.object({
+  email: z.email().max(254),
+  password: z.string().min(1).max(1024),
+  turnstile_token: z.string().max(2048).optional(),
+});
+
+accounts.post("/password-login", smallBody, async (c) => {
+  if (!passwordsOn(c.env)) return c.notFound();
+  const body = await parseBody(c, PasswordLogin);
+  if (!body.ok) return body.response;
+  if (!(await humanCheck(c, body.data.turnstile_token, "login"))) return c.json({ error: "turnstile_failed" }, 400);
+  const db = c.env.DB;
+  const now = Date.now();
+  const email = normalizeEmail(body.data.email);
+  const ipk = await ipKey(c.env, c.req.header("CF-Connecting-IP"));
+  // Limits first: a paused email or network costs no hashing. Unknown emails count the same, so nothing is revealed.
+  const attempt = await startAttempt(db, email, ipk, now);
+  if (!attempt.allowed) return c.json({ error: "too_many_tries" }, 429);
+  const user = await db.prepare("SELECT id, password_hash, client_calendar_id FROM users WHERE email = ?")
+    .bind(email).first<{ id: string; password_hash: string | null; client_calendar_id: string | null }>();
+  // No account, or no password: check against a dummy so the answer takes the same time.
+  const ok = await verifyPassword(c.env, body.data.password, user?.password_hash ?? DUMMY_HASH);
+  if (!ok || !user?.password_hash) {
+    console.log(JSON.stringify({ event: "password_login_failed", user: user?.id ?? null, reason: !user ? "unknown" : user.password_hash ? "wrong" : "no_password", ip: ipk.slice(0, 12) }));
+    return c.json({ error: "wrong_password" }, 401);
+  }
+  await forgetAttempt(db, attempt.id);
+  if (needsRehash(user.password_hash)) {
+    await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(await hashPassword(c.env, body.data.password), user.id).run();
+  }
+  await touchLogin(db, user.id, now);
+  const slug = user.client_calendar_id
+    ? ((await db.prepare("SELECT slug FROM calendars WHERE id = ?").bind(user.client_calendar_id).first<{ slug: string }>())?.slug ?? null)
+    : null;
+  return c.json({ ...(await hostedSession(c.env, user.id, now)), client_slug: slug });
 });
 
 const COOKIE = "osc_signin";
