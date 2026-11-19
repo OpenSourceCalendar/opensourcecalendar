@@ -223,6 +223,21 @@ describe("invites", () => {
     const c = await clientCalendar(env, a.userId);
     const all = await Promise.all([invite(env, a.token, c.calendarId, clientEmail()), invite(env, a.token, c.calendarId, clientEmail())]);
     for (const r of all) expect([200, 409]).toContain(r.status);
+    const open = (await env.DB.prepare(
+      `SELECT i.email AS email, u.email AS current FROM client_invites i JOIN users u ON u.id = i.user_id
+       WHERE u.client_calendar_id = ? AND i.used_at IS NULL AND i.revoked_at IS NULL`,
+    ).bind(c.calendarId).all<{ email: string; current: string }>()).results;
+    expect(open).toHaveLength(1);
+    expect(open[0].email).toBe(open[0].current);
+  });
+
+  it("a client's own sign-in can't send invites or remove sign-ins", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    expect((await invite(env, u.token, c.calendarId, clientEmail())).status).toBe(403);
+    expect((await req(env, `/api/admin/clients/${c.calendarId}/sign-in`, { token: u.token, method: "DELETE" })).status).toBe(403);
   });
 
   it("Remove sign-in signs the client out at once and keeps the calendar; inviting again works", async () => {

@@ -80,12 +80,21 @@ export async function prepareInvite(db: D1Database, calendarId: string, email: s
     return { ok: false, error: "email_in_use" };
   }
   const token = randomToken();
-  await db.batch([
-    db.prepare("UPDATE client_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(now, user.id),
+  // Both only if the sign-in still has this email: a concurrent invite to another address may have changed it, and
+  // then this one must neither revoke that invite nor leave one for an address the sign-in no longer has.
+  const still = "EXISTS (SELECT 1 FROM users WHERE id = ? AND email = ?)";
+  const [, inserted] = await db.batch([
+    db.prepare(`UPDATE client_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL AND ${still}`)
+      .bind(now, user.id, user.id, user.email),
     // The invite remembers its address: it is only valid while the sign-in still has this email (Task 11's accept).
-    db.prepare("INSERT INTO client_invites (token_hash, user_id, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(await sha256Hex(token), user.id, user.email, now, now + CLIENT_INVITE_TTL_MS),
+    db.prepare(`INSERT INTO client_invites (token_hash, user_id, email, created_at, expires_at) SELECT ?, ?, ?, ?, ? WHERE ${still}`)
+      .bind(await sha256Hex(token), user.id, user.email, now, now + CLIENT_INVITE_TTL_MS, user.id, user.email),
   ]);
+  if (inserted.meta.changes !== 1) {
+    // The other invite won the race. Look again, once (this address then replaces it); never email an invite not stored.
+    if (!retried) return prepareInvite(db, calendarId, email, now, true);
+    return { ok: false, error: "email_in_use" };
+  }
   return { ok: true, user, token };
 }
 
