@@ -15,6 +15,7 @@ import { google, googleCallback, googleConfirm } from "./routes/google";
 import { webhook } from "./routes/webhook";
 import { billing, billingWebhook } from "./routes/billing";
 import { clients } from "./routes/clients";
+import { passwordRoutes } from "./routes/password";
 import { site } from "./site/routes";
 import { runWebhookJobs } from "./webhooks/outbox";
 import { runDueJobs } from "./email/outbox";
@@ -73,6 +74,7 @@ app.route("/api/admin", adminLogin); // /api/admin/login, no session needed
 const admin = new Hono<AppEnv>();
 admin.use("*", requireSession);
 admin.get("/account", accountInfo);
+admin.route("/", passwordRoutes);
 // Hosted accounts only; host apps never reach billing, so it is not in mountApi.
 admin.route("/billing", billing);
 admin.route("/clients", clients); // hosted accounts only, like billing

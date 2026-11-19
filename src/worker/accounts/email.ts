@@ -11,3 +11,32 @@ export function signInEmail(from: string, to: string, link: string, signup: bool
 <p>It works once, for 15 minutes. If you didn't ask for this, you can ignore this email.</p>`;
   return { to, from: { email: from, name: "Open Source Calendar" }, subject: "Your Open Source Calendar sign-in link", text, html };
 }
+
+const button = (link: string, label: string) =>
+  `<p><a href="${esc(link)}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1e40af;color:#ffffff;text-decoration:none;font-weight:700">${esc(label)}</a></p>`;
+
+/** A client's sign-in link: the client's name only, never the product's. */
+export function clientSignInEmail(from: string, to: string, link: string, brand: string): OutgoingEmail {
+  const text = `Use this link to log in to your booking calendar for ${brand}:\n\n${link}\n\nIt works once, for 15 minutes.\n\nIf you didn't ask for this, you can ignore this email.\n`;
+  const html = `<p>Use this button to log in to your booking calendar for ${esc(brand)}.</p>${button(link, "Log in")}<p>It works once, for 15 minutes. If you didn't ask for this, you can ignore this email.</p>`;
+  return { to, from: { email: from, name: brand }, subject: `Your sign-in link for ${brand}`, text, html };
+}
+
+/** The invite a White-label agency sends from the Clients page, in the client's name. */
+export function clientInviteEmail(from: string, to: string, link: string, brand: string): OutgoingEmail {
+  const text = `Your booking calendar for ${brand} is ready. Set your password here:\n\n${link}\n\nThe link works once, for 7 days.\n`;
+  const html = `<p>Your booking calendar for ${esc(brand)} is ready.</p>${button(link, "Set your password")}<p>The link works once, for 7 days.</p>`;
+  return { to, from: { email: from, name: brand }, subject: "Your booking calendar is ready — set your password", text, html };
+}
+
+/** After a password is set or changed. `brand` = the client's name for client sign-ins, null for everyone else. */
+export function passwordSetEmail(from: string, to: string, changed: boolean, brand: string | null): OutgoingEmail {
+  const what = changed ? "changed" : "set";
+  const help = brand
+    ? "If this wasn't you, use “Email me a sign-in link” on your sign-in page, change your password, and tell your provider."
+    : "If this wasn't you, use “Email me a sign-in link” on the log-in page, change your password, and contact support@opensourcecalendar.com.";
+  const where = brand ? `your booking calendar for ${brand}` : "your Open Source Calendar account";
+  const text = `The password for ${where} was just ${what}. Other devices were signed out.\n\n${help}\n`;
+  const html = `<p>The password for ${esc(where)} was just ${what}. Other devices were signed out.</p><p>${esc(help)}</p>`;
+  return { to, from: { email: from, name: brand ?? "Open Source Calendar" }, subject: `Your password was ${what}`, text, html };
+}

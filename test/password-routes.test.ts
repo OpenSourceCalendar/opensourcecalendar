@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { needsRehash } from "../src/worker/accounts/password";
 import { ipKey, ipv6Net64 } from "../src/worker/accounts/attempts";
-import { hibpClean, PW, req, setup, userWithPassword } from "./password-helpers";
+import { hibpClean, linkToken, PW, req, setup, userWithPassword } from "./password-helpers";
+import { hostedSession } from "../src/worker/auth";
 import { clientUser, hostedAccount } from "./stripe-fake";
 import { hashPassword } from "../src/worker/accounts/password";
 import { uniq } from "./helpers";
@@ -104,5 +105,95 @@ describe("password sign-in", () => {
     expect((await req(env, "/api/account/password-login", { body: JSON.stringify({ email: "a@example.test", password: "x".repeat(5000) }) })).status).toBe(413);
     const { env: off } = setup({ PASSWORD_PEPPER: undefined });
     expect((await login(off, "a@example.test", PW)).status).toBe(404);
+  });
+});
+
+describe("setting and changing a password", () => {
+  const set = (env: Parameters<typeof req>[0], token: string, json: Record<string, unknown>) => req(env, "/api/admin/password", { token, json });
+  const NEW = "a brand new long passphrase";
+
+  it("a fresh sign-in sets a first password; other devices are signed out; an email says so", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    const other = (await hostedSession(env, a.userId, Date.now())).token;
+    const res = await set(env, a.token, { password: NEW });
+    expect(res.status).toBe(200);
+    const { token } = await json<{ token: string }>(res);
+    expect((await req(env, "/api/admin/calendar", { token: other })).status).toBe(401);
+    expect((await req(env, "/api/admin/calendar", { token })).status).toBe(200);
+    expect((await login(env, `${a.userId}@example.test`, NEW)).status).toBe(200);
+    expect(sent.at(-1)!.subject).toBe("Your password was set");
+  });
+
+  it("an older sign-in needs the current password", async () => {
+    const { env, sent } = setup();
+    const u = await userWithPassword(env);
+    const old = (await hostedSession(env, u.userId, Date.now() - 20 * 60_000)).token;
+    expect(await json(await set(env, old, { password: NEW }))).toEqual({ error: "reauth_required" });
+    expect(await json(await set(env, old, { password: NEW, current_password: "not the right one at all" }))).toEqual({ error: "wrong_password" });
+    expect((await set(env, old, { password: NEW, current_password: PW })).status).toBe(200);
+    expect(sent.at(-1)!.subject).toBe("Your password was changed");
+  });
+
+  it("wrong current passwords count toward the sign-in limits", async () => {
+    const { env } = setup();
+    const u = await userWithPassword(env);
+    const old = (await hostedSession(env, u.userId, Date.now() - 20 * 60_000)).token;
+    for (let i = 0; i < 5; i++) expect((await set(env, old, { password: NEW, current_password: "not the right one at all" })).status).toBe(403);
+    expect(await json(await set(env, old, { password: NEW, current_password: PW }))).toEqual({ error: "too_many_tries" });
+    expect((await login(env, u.email, PW)).status).toBe(429);
+  });
+
+  it("an older sign-in without a password can't add one", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const old = (await hostedSession(env, a.userId, Date.now() - 20 * 60_000)).token;
+    expect((await set(env, old, { password: NEW })).status).toBe(403);
+  });
+
+  it("refuses short, long, guessable and breached passwords", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    expect(await json(await set(env, a.token, { password: "fourteen chars" }))).toEqual({ error: "password_too_short" });
+    expect(await json(await set(env, a.token, { password: "x".repeat(257) }))).toEqual({ error: "password_too_long" });
+    expect(await json(await set(env, a.token, { password: `${a.userId} is my long password` }))).toEqual({ error: "password_weak" });
+    vi.restoreAllMocks();
+    const sha = [...new Uint8Array(await crypto.subtle.digest("SHA-1", new TextEncoder().encode(NEW)))].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(`${sha.slice(5)}:40`));
+    expect(await json(await set(env, a.token, { password: NEW }))).toEqual({ error: "password_weak" });
+  });
+
+  it("an open sign-in link stops working once the password changes", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    await req(env, "/api/account/email-link", { json: { email: `${a.userId}@example.test` } });
+    const link = linkToken(sent.at(-1)!);
+    expect((await set(env, a.token, { password: NEW })).status).toBe(200);
+    expect((await req(env, "/api/account/email-link/verify", { json: { token: link } })).status).toBe(400);
+  });
+
+  it("sign out of all devices ends every other session and keeps this one", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const res = await req(env, "/api/admin/sign-out-everywhere", { token: a.token, method: "POST" });
+    const { token } = await json<{ token: string }>(res);
+    expect((await req(env, "/api/admin/calendar", { token: a.token })).status).toBe(401);
+    expect((await req(env, "/api/admin/calendar", { token })).status).toBe(200);
+  });
+
+  it("a stolen old token can't make itself fresh: sign out everywhere, then no password without the current one", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const old = (await hostedSession(env, a.userId, Date.now() - 20 * 60_000)).token;
+    const { token } = await json<{ token: string }>(await req(env, "/api/admin/sign-out-everywhere", { token: old, method: "POST" }));
+    expect(await json(await set(env, token, { password: NEW }))).toEqual({ error: "reauth_required" });
+  });
+
+  it("a password change re-issues this device's token with the old sign-in time", async () => {
+    const { env } = setup();
+    const u = await userWithPassword(env);
+    const old = (await hostedSession(env, u.userId, Date.now() - 20 * 60_000)).token;
+    const { token } = await json<{ token: string }>(await set(env, old, { password: NEW, current_password: PW }));
+    expect(await json(await set(env, token, { password: "yet another long passphrase" }))).toEqual({ error: "reauth_required" });
   });
 });

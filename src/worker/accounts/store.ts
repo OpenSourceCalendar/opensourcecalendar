@@ -105,3 +105,11 @@ export async function useLink(db: D1Database, token: string, now: number): Promi
 export async function cleanUpLinks(db: D1Database, now: number) {
   await db.prepare("DELETE FROM login_links WHERE created_at < ?").bind(now - LINK_KEEP_MS).run();
 }
+
+/** After a password is set: the user's open client invites and sign-in links stop working. */
+export async function revokeTokens(db: D1Database, userId: string, email: string, now: number) {
+  await db.batch([
+    db.prepare("UPDATE client_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(now, userId),
+    db.prepare("UPDATE login_links SET used_at = ? WHERE email = ? AND used_at IS NULL").bind(now, email),
+  ]);
+}
