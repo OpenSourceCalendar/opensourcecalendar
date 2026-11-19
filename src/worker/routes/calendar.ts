@@ -3,7 +3,7 @@ import { z } from "zod";
 import { HOSTED_APP, requireCalendar } from "../auth";
 import { newId } from "../lib/ids";
 import { isTimeZone, parseBody } from "../lib/http";
-import { imageUrl } from "./images";
+import { imageUrl } from "../lib/image-url";
 import { mergeBranding, mergeNotifications, mergeRules, parseBranding, parseNotifications, parseRules } from "../settings";
 import { emailEnabled } from "../email/send";
 import { isClient } from "../billing/store";

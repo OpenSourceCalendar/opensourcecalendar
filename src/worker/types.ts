@@ -7,6 +7,9 @@ export type Bindings = Env & { SETUP_TOKEN?: string; MANAGE_SECRET?: string; TUR
   MARKETING_SITE?: string;
   /** "invite" turns on hosted sign-up and log-in (invite-only) when PUBLIC_URL is also set. Unset = off (self-hosted copies). */
   SIGNUP?: string;
+  /** 32 random bytes, base64. Mixed into every password hash; kept apart from D1 so a copy of the database can't be
+   * cracked on its own. Unset = password sign-in off. Changing it makes every stored password stop working. */
+  PASSWORD_PEPPER?: string;
   /** Google OAuth client (Google Cloud → OAuth client ID, type "Web application"). Unset = Google sync off. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -41,5 +44,13 @@ export type CalendarRow = {
 
 export type AppEnv = {
   Bindings: Bindings;
-  Variables: { app: AppRow; userId: string; calendar: CalendarRow };
+  Variables: {
+    app: AppRow;
+    userId: string;
+    calendar: CalendarRow;
+    /** A White-label client's own sign-in: the one calendar it may open. Null for everyone else. */
+    clientCalendarId: string | null;
+    /** When this session's token was issued (0 = unknown), for "signed in recently" checks. */
+    sessionIssuedAt: number;
+  };
 };

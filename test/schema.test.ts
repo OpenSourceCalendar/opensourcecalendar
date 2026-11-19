@@ -6,6 +6,7 @@ const TABLES = [
   "time_blocks", "services", "customers", "appointments", "reminders", "consents",
   "google_connections", "google_busy", "jobs", "released_slugs", "google_states", "waitlist",
   "users", "invites", "login_links", "billing", "stripe_events", "free_limit_notices",
+  "client_invites", "invite_attempts", "password_attempts",
 ];
 
 describe("schema", () => {
@@ -31,11 +32,16 @@ describe("schema", () => {
     expect(await owner("cal_bf_app")).toBeNull();
   });
 
-  it("has all 24 tables", async () => {
+  it("has all 27 tables", async () => {
     const { results } = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%' AND name NOT LIKE '_cf_%'",
     ).all<{ name: string }>();
     expect(results.map((r) => r.name).sort()).toEqual([...TABLES].sort());
+  });
+
+  it("users get password, session and client columns (0013)", async () => {
+    const cols = (await env.DB.prepare("PRAGMA table_info(users)").all<{ name: string }>()).results.map((r) => r.name);
+    expect(cols).toEqual(expect.arrayContaining(["password_hash", "password_set_at", "session_version", "client_calendar_id"]));
   });
 
   it("appointments has emails_off (0011)", async () => {

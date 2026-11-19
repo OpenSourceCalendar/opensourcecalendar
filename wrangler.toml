@@ -48,6 +48,8 @@ TURNSTILE_SITE_KEY = ""
 # PUBLIC_URL = "https://book.example.com"
 # Hosted sign-up and log-in (opensourcecalendar.com's own service). Leave unset on your own install.
 # SIGNUP = "invite"
+# Password sign-in (hosted service only) also needs the secret PASSWORD_PEPPER: `openssl rand -base64 32 | npx wrangler secret put PASSWORD_PEPPER`.
+# Keep a copy: if it changes, every stored password stops working.
 
 # Secrets (set with `npx wrangler secret put NAME`, never committed):
 #   MANAGE_SECRET  required; signs customers' manage links. Changing it breaks every existing link

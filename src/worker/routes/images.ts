@@ -13,7 +13,8 @@ const KINDS = {
 /** The only keys the public image route will serve. */
 export const IMAGE_KEY_RE = /^cal\/[A-Za-z0-9_]+\/(logo|hero)-[A-Za-z0-9_-]{8,40}\.(png|jpg|webp)$/;
 
-export const imageUrl = (key: string | null) => (key ? `/api/public/images/${key}` : null);
+import { imageUrl } from "../lib/image-url";
+export { imageUrl };
 
 /** Branding as the public sees it: image URLs instead of storage keys. */
 export function publicBranding(b: Branding) {

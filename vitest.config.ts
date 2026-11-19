@@ -7,7 +7,7 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.test.toml" },
-        miniflare: { bindings: { TEST_MIGRATIONS: migrations, SETUP_TOKEN: "test-setup-token", MANAGE_SECRET: "test-manage-secret", SESSION_SECRET: "test-session-secret", OWNER_PASSWORD: "test-owner-password", GOOGLE_CLIENT_ID: "test-client-id", GOOGLE_CLIENT_SECRET: "test-client-secret", GOOGLE_TOKEN_KEY: "Sup-0NtMrEdeKvsoT-KgoFcaYvo7wQYpM5igPaPCaeY" } },
+        miniflare: { bindings: { TEST_MIGRATIONS: migrations, SETUP_TOKEN: "test-setup-token", MANAGE_SECRET: "test-manage-secret", SESSION_SECRET: "test-session-secret", OWNER_PASSWORD: "test-owner-password", GOOGLE_CLIENT_ID: "test-client-id", GOOGLE_CLIENT_SECRET: "test-client-secret", GOOGLE_TOKEN_KEY: "Sup-0NtMrEdeKvsoT-KgoFcaYvo7wQYpM5igPaPCaeY", PASSWORD_PEPPER: "test-password-pepper" } },
       }),
     ],
     // API tests make many requests each; the 5s default times out on slower machines.
