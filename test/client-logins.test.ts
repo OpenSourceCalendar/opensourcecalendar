@@ -4,6 +4,7 @@ import { HOSTED_APP } from "../src/worker/auth";
 import { app } from "../src/worker/index";
 import { clientCalendar, clientUser, hostedAccount, setBilling } from "./stripe-fake";
 import { BASE, hibpClean, req, setup } from "./password-helpers";
+import { uniq } from "./helpers";
 
 const json = async <T>(res: Response) => (await res.json()) as T;
 beforeEach(() => void hibpClean());
@@ -122,5 +123,116 @@ describe("a client's own sign-in", () => {
     await setBilling(env, a.userId, { plan: "white_label", status: "active" });
     expect((await req(env, "/api/admin/billing", { token: a.token })).status).toBe(200);
     expect((await req(env, "/api/admin/clients", { token: a.token })).status).toBe(200);
+  });
+});
+
+describe("invites", () => {
+  const invite = (env: Parameters<typeof req>[0], token: string, id: string, email: string) =>
+    req(env, `/api/admin/clients/${id}/invite`, { token, json: { email } });
+  const clientEmail = () => `client-${uniq()}@example.test`;
+
+  it("creates the client's sign-in and emails a link in the client's name", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const address = clientEmail();
+    const res = await invite(env, a.token, c.calendarId, address);
+    expect(res.status).toBe(200);
+    expect((await json<{ signin: { status: string; email: string } }>(res)).signin).toMatchObject({ status: "invited", email: address });
+    const mail = sent.at(-1)!;
+    expect(mail.to).toBe(address);
+    expect(mail.from.name).toBe("Client Co");
+    expect(mail.subject).toBe("Your booking calendar is ready — set your password");
+    expect(mail.text).toContain("https://book.example.test/invite#t=");
+    expect(mail.text + mail.html).not.toMatch(/open source calendar/i);
+  });
+
+  it("escapes the business name in the email", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    await env.DB.prepare("UPDATE calendars SET branding = ? WHERE id = ?").bind(JSON.stringify({ business_name: "<b>Evil</b> & Co" }), c.calendarId).run();
+    expect((await invite(env, a.token, c.calendarId, clientEmail())).status).toBe(200);
+    expect(sent.at(-1)!.html).not.toContain("<b>Evil</b>");
+    expect(sent.at(-1)!.html).toContain("&#60;b&#62;Evil");
+  });
+
+  it("the client list shows each client's sign-in and notification email", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const d = await clientCalendar(env, a.userId);
+    const address = clientEmail();
+    await invite(env, a.token, c.calendarId, address);
+    const list = await json<{ calendars: { id: string; signin: { status: string; email: string | null }; notification_email: string }[] }>(await req(env, "/api/admin/clients", { token: a.token }));
+    expect(list.calendars.find((x) => x.id === c.calendarId)!.signin).toMatchObject({ status: "invited", email: address });
+    expect(list.calendars.find((x) => x.id === d.calendarId)!.signin).toEqual({ status: "not_invited", email: null, last_login_at: null });
+  });
+
+  it("refuses an email that already has an account here, another agency's client, and the agency's own calendar", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const b = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const theirs = await clientCalendar(env, b.userId);
+    expect(await json(await invite(env, a.token, c.calendarId, `${b.userId}@example.test`))).toEqual({ error: "email_in_use" });
+    expect((await invite(env, a.token, theirs.calendarId, clientEmail())).status).toBe(404);
+    expect((await invite(env, a.token, a.calendarId, clientEmail())).status).toBe(404);
+    expect((await req(env, `/api/admin/clients/${theirs.calendarId}/sign-in`, { token: a.token, method: "DELETE" })).status).toBe(404);
+  });
+
+  it("before the first sign-in the address can change; after it, only the same address", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const first = clientEmail();
+    await invite(env, a.token, c.calendarId, first);
+    const second = clientEmail();
+    expect((await invite(env, a.token, c.calendarId, second)).status).toBe(200);
+    await env.DB.prepare("UPDATE users SET last_login_at = ? WHERE client_calendar_id = ?").bind(Date.now(), c.calendarId).run();
+    expect(await json(await invite(env, a.token, c.calendarId, clientEmail()))).toEqual({ error: "signed_in" });
+    expect((await invite(env, a.token, c.calendarId, second)).status).toBe(200);
+  });
+
+  it("a resend revokes the older invite and stores the address it went to", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const address = clientEmail();
+    await invite(env, a.token, c.calendarId, address);
+    await invite(env, a.token, c.calendarId, address);
+    const rows = (await env.DB.prepare(
+      "SELECT email, revoked_at FROM client_invites WHERE user_id = (SELECT id FROM users WHERE client_calendar_id = ?) ORDER BY created_at, rowid",
+    ).bind(c.calendarId).all<{ email: string; revoked_at: number | null }>()).results;
+    expect(rows.map((r) => [r.email, r.revoked_at !== null])).toEqual([[address, true], [address, false]]);
+  });
+
+  it("20 invites an hour per agency, refused ones included, and Remove sign-in doesn't reset it", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    for (let i = 0; i < 19; i++) expect((await invite(env, a.token, c.calendarId, `${a.userId}@example.test`)).status).toBe(409);
+    await req(env, `/api/admin/clients/${c.calendarId}/sign-in`, { token: a.token, method: "DELETE" });
+    expect((await invite(env, a.token, c.calendarId, `${a.userId}@example.test`)).status).toBe(409);
+    expect(await json(await invite(env, a.token, c.calendarId, clientEmail()))).toEqual({ error: "too_many_invites" });
+  });
+
+  it("two invites at once for one client never fail with a 500", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const all = await Promise.all([invite(env, a.token, c.calendarId, clientEmail()), invite(env, a.token, c.calendarId, clientEmail())]);
+    for (const r of all) expect([200, 409]).toContain(r.status);
+  });
+
+  it("Remove sign-in signs the client out at once and keeps the calendar; inviting again works", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    const c = await clientCalendar(env, a.userId);
+    const u = await clientUser(env, c.calendarId);
+    expect((await req(env, `/api/admin/clients/${c.calendarId}/sign-in`, { token: a.token, method: "DELETE" })).status).toBe(204);
+    expect((await req(env, "/api/admin/calendar", { token: u.token })).status).toBe(401);
+    expect((await req(env, "/api/admin/calendar", { token: a.token, client: c.calendarId })).status).toBe(200);
+    expect((await invite(env, a.token, c.calendarId, u.email)).status).toBe(200);
   });
 });

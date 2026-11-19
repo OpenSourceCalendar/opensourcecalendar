@@ -3,11 +3,17 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { agencyOnly, HOSTED_APP } from "../auth";
+import { inviteAllowed, prepareInvite, removeSignIn, signInJson, signInsFor } from "../accounts/client-users";
+import { publicBase } from "../accounts/config";
+import { clientInviteEmail } from "../accounts/email";
+import { passwordsOn } from "../accounts/password";
+import { normalizeEmail } from "../accounts/store";
 import { billed, canAddClients, entitlementsFrom } from "../billing/entitlements";
 import { accountCalendars, getBilling, homeCalendar, isClient } from "../billing/store";
+import { emailFrom } from "../email/send";
 import { newId } from "../lib/ids";
 import { parseBody } from "../lib/http";
-import { mergeBranding, mergeNotifications, parseBranding } from "../settings";
+import { mergeBranding, mergeNotifications, parseBranding, parseNotifications } from "../settings";
 import type { AppEnv, CalendarRow } from "../types";
 import { calendarJson, Slug, slugTaken, TimeZone } from "./calendar";
 
@@ -25,7 +31,7 @@ clients.use("*", async (c, next) => {
 clients.get("/", async (c) => {
   const db = c.env.DB;
   const now = Date.now();
-  const [cals, row] = await Promise.all([accountCalendars(db, c.var.userId), getBilling(db, c.var.userId)]);
+  const [cals, row, signIns] = await Promise.all([accountCalendars(db, c.var.userId), getBilling(db, c.var.userId), signInsFor(db, c.var.userId)]);
   return c.json({
     calendars: cals.map((cal) => ({
       id: cal.id,
@@ -34,6 +40,9 @@ clients.get("/", async (c) => {
       time_zone: cal.time_zone,
       home: !isClient(cal),
       paused: billed(c.env, cal) && entitlementsFrom(row, !isClient(cal), now).paused,
+      // Prefills the invite box.
+      notification_email: parseNotifications(cal.notifications).owner_email,
+      signin: signInJson(signIns.get(cal.id)),
     })),
     limit: row?.client_limit ?? DEFAULT_CLIENT_LIMIT,
     count: cals.length,
@@ -95,4 +104,39 @@ clients.post("/", async (c) => {
   }
   if (!added.meta.changes) return c.json({ error: "client_limit", message: "Contact us to add more" }, 409);
   return c.json(calendarJson(row, c.env), 201);
+});
+
+/** One of this agency's client calendars (never its own), or null. */
+async function ownClient(db: D1Database, agencyUserId: string, id: string): Promise<CalendarRow | null> {
+  const cal = await db.prepare("SELECT * FROM calendars WHERE id = ? AND app_id = ? AND account_user_id = ?")
+    .bind(id, HOSTED_APP, agencyUserId).first<CalendarRow>();
+  return cal && isClient(cal) ? cal : null;
+}
+
+// No White-label check here (unlike POST /): a paused client can still sign in to see its bookings.
+clients.post("/:id/invite", async (c) => {
+  const from = emailFrom(c.env);
+  if (!passwordsOn(c.env) || !from || !c.env.EMAIL) return c.json({ error: "not_available" }, 404);
+  const body = await parseBody(c, z.object({ email: z.email().max(254) }));
+  if (!body.ok) return body.response;
+  const db = c.env.DB;
+  const now = Date.now();
+  // Counted first, refusals included, so the "already has an account" answer can't be probed for free.
+  if (!(await inviteAllowed(db, c.var.userId, now))) return c.json({ error: "too_many_invites" }, 429);
+  const cal = await ownClient(db, c.var.userId, c.req.param("id"));
+  if (!cal) return c.json({ error: "calendar_not_found" }, 404);
+  const result = await prepareInvite(db, cal.id, normalizeEmail(body.data.email), now);
+  if (!result.ok) return c.json({ error: result.error }, 409);
+  const brand = parseBranding(cal.branding).business_name.replace(/\s+/g, " ").trim().slice(0, 80) || "Your booking calendar";
+  // Always PUBLIC_URL, never the Host header; the token rides in the fragment, so it never reaches a server log.
+  const mail = clientInviteEmail(from, result.user.email, `${publicBase(c.env)}/invite#t=${result.token}`, brand);
+  c.executionCtx.waitUntil(c.env.EMAIL.send(mail).catch((err) => console.error(JSON.stringify({ event: "client_invite_email_failed", error: String(err).slice(0, 200) }))));
+  return c.json({ signin: signInJson(result.user) });
+});
+
+clients.delete("/:id/sign-in", async (c) => {
+  const cal = await ownClient(c.env.DB, c.var.userId, c.req.param("id"));
+  if (!cal) return c.json({ error: "calendar_not_found" }, 404);
+  await removeSignIn(c.env.DB, cal.id, Date.now());
+  return c.body(null, 204);
 });

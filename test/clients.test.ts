@@ -168,7 +168,10 @@ describe("GET /clients", () => {
     expect(list).toMatchObject({ limit: 50, count: 2 });
     expect(list.calendars).toEqual([
       expect.objectContaining({ id: a.calendarId, home: true, paused: false }),
-      { id: c.calendarId, business_name: "Barber Bob", slug: c.slug, time_zone: "America/Los_Angeles", home: false, paused: false },
+      {
+        id: c.calendarId, business_name: "Barber Bob", slug: c.slug, time_zone: "America/Los_Angeles", home: false, paused: false,
+        notification_email: "client@example.test", signin: { status: "not_invited", email: null, last_login_at: null },
+      },
     ]);
     await setBilling(env, a.userId, { status: "canceled" });
     list = await json<Listed>(await adminCall(env, a.token, "/clients"));
