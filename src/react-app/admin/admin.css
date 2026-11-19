@@ -2238,14 +2238,51 @@ a.status-link.is-warn {
   }
 }
 
-/* White-label: which business the menu is for. */
-.client-picker {
-  display: grid;
-  gap: 6px;
-  padding: 0 8px 12px;
+/* White-label: a client's calendar is open, and the way back to the Clients page. */
+.viewing-bar {
+  padding: 10px 40px;
+  background: var(--brand-wash);
+  color: var(--brand-ink);
+  font-size: 14px;
+  border-bottom: 1px solid var(--brand-line);
+  overflow-wrap: anywhere;
 }
-.client-picker .link {
-  justify-self: start;
+.viewing-bar .link {
+  color: inherit;
+}
+@media (max-width: 859px) {
+  .viewing-bar {
+    padding: 10px 16px;
+  }
+}
+
+/* White-label: the Clients page. */
+.client-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.client-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.client-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.client-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 /* Focused after switching business (for screen readers and the keyboard), not a control. */
 .admin-main:focus {

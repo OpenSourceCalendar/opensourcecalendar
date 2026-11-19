@@ -5,7 +5,7 @@ import { adminApi, canAddClients, onWhiteLabel, setUnauthorizedHandler, type Adm
 import { AddClient } from "./AddClient";
 import { Availability } from "./Availability";
 import { Branding } from "./Branding";
-import { ClientPicker } from "./ClientPicker";
+import { Clients } from "./Clients";
 import { CustomerPage } from "./CustomerPage";
 import { Customers } from "./Customers";
 import { Dashboard } from "./Dashboard";
@@ -65,8 +65,8 @@ export function AdminApp() {
   // Bumped whenever New Entry saves, so the screen behind refetches.
   const [saves, setSaves] = useState(0);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  // Where the owner was heading when the leave guard stopped them: a path, another business, adding one, or signing out.
-  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | typeof ADD_CLIENT | { client: string } | null>(null);
+  // Where the owner was heading when the leave guard stopped them: a path, another business (and its page), adding one, or signing out.
+  const [leaveTo, setLeaveTo] = useState<string | typeof SIGN_OUT | typeof ADD_CLIENT | { client: string; to?: string } | null>(null);
   const dirty = useRef(false);
   const shownPath = useRef(path);
   shownPath.current = path;
@@ -194,16 +194,19 @@ export function AdminApp() {
     if (calendarId) loadBilling();
   }, [calendarId, loadBilling]);
 
-  // The account's businesses, for the White-label picker (hosted accounts only; others get a 404 and no picker).
-  // Reloaded when another business opens or this one's name changes. Undefined until the first answer; null without a list.
+  // The account's businesses, for the White-label Clients page (hosted accounts only; others get a 404 and no list).
+  // Reloaded when another business opens, this one's name changes, or the Clients page changes a sign-in.
+  // Undefined until the first answer; null without a list.
   const [clients, setClients] = useState<ClientList | null | undefined>(undefined);
   const [adding, setAdding] = useState(false);
+  const [clientsKey, setClientsKey] = useState(0);
+  const reloadClients = () => setClientsKey((n) => n + 1);
   const businessName = calendar?.branding.business_name;
   useEffect(() => {
     if (!calendarId) return;
     // Only a 404 means "no list" (not a hosted account); after any other failure it stays unknown until the next load.
     adminApi.clients().then(setClients, (e) => e instanceof ApiError && e.status === 404 && setClients(null));
-  }, [calendarId, businessName]);
+  }, [calendarId, businessName, clientsKey]);
 
   const onGooglePage = path === "/admin/google";
   const wasOnGooglePage = useRef(false);
@@ -246,7 +249,7 @@ export function AdminApp() {
     void load();
   }
 
-  // After a switch the screens are new (Shell remounts), so move focus to them instead of leaving it on the old picker.
+  // After a switch the screens are new (Shell remounts), so move focus to them instead of leaving it on the old screens.
   const switched = useRef(false);
   useEffect(() => {
     if (!switched.current || !calendarId) return;
@@ -260,10 +263,17 @@ export function AdminApp() {
     else setAdding(true);
   }
 
-  function pickClient(id: string) {
-    if (id === calendar?.id) return;
+  const homeId = clients?.calendars.find((x) => x.home)?.id;
+  /** Open a client from the Clients page: its dashboard, with the Viewing bar. */
+  function openClient(id: string) {
     if (dirty.current) setLeaveTo({ client: id });
     else void switchClient(id);
+  }
+  /** Back to the agency's own calendar, on the Clients page. */
+  function backToClients() {
+    if (!homeId) return;
+    if (dirty.current) setLeaveTo({ client: homeId, to: "/admin/clients" });
+    else void switchClient(homeId, "/admin/clients");
   }
 
   const toastEl = <Toast toast={toast} onClose={closeToast} />;
@@ -317,11 +327,9 @@ export function AdminApp() {
   const paused = !!shown?.paused;
   const client = !!shown && !shown.home;
   const pageBilling = clientKnown ? billing : null;
-  // Shown once there's more than one business, or when the plan can add one.
-  const picker =
-    clients && (clients.calendars.length > 1 || canAddClients(billing)) ? (
-      <ClientPicker clients={clients} currentId={state.calendar.id} onPick={pickClient} onAdd={canAddClients(billing) ? addClient : null} />
-    ) : null;
+  // On White-label (a trial included), or while the account still has client calendars.
+  const showClients = !!clients && (onWhiteLabel(billing) || clients.calendars.length > 1);
+  const viewing = client && shown ? { name: shown.business_name || shown.slug, onBack: backToClients } : null;
 
   return (
     <Shell
@@ -335,7 +343,8 @@ export function AdminApp() {
       onSignOut={signOut}
       client={client || !clientKnown}
       paused={paused}
-      picker={picker}
+      showClients={showClients}
+      viewing={viewing}
     >
       {path === "/admin" ? (
         <Dashboard calendar={state.calendar} reloadKey={saves} navigate={navigate} onNewEntry={() => setEntry({})} />
@@ -357,9 +366,11 @@ export function AdminApp() {
         <Share {...page} />
       ) : path === "/admin/google" ? (
         <Google {...page} google={google} onGoogle={setGoogle} billing={pageBilling} paused={paused} />
+      ) : path === "/admin/clients" && clients ? (
+        <Clients clients={clients} onOpen={openClient} onAdd={canAddClients(billing) ? addClient : null} onChanged={reloadClients} notify={setToast} />
       ) : path === "/admin/plan" && billing?.enabled ? (
         <Plan billing={billing} reload={loadBilling} clients={clients ?? null} />
-      ) : path === "/admin/plan" && !billing ? null : known ? (
+      ) : (path === "/admin/plan" && !billing) || (path === "/admin/clients" && clients === undefined) ? null : known ? (
         <ComingSoon title={known.label} />
       ) : (
         <>
@@ -413,7 +424,7 @@ export function AdminApp() {
                   // The edits are dropped by closing this page; the new client opens once added.
                   go("/admin");
                   setAdding(true);
-                } else if (typeof to === "object") void switchClient(to.client);
+                } else if (typeof to === "object") void switchClient(to.client, to.to);
                 else go(to);
               }}
             >

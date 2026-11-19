@@ -17,6 +17,8 @@ export const NAV: { path: string; label: string; icon: IconName }[] = [
 ];
 /** Only shown when billing is on (hosted accounts). */
 export const PLAN_NAV: (typeof NAV)[number] = { path: "/admin/plan", label: "Plan", icon: "card" };
+/** White-label: the agency's clients. */
+export const CLIENTS_NAV: (typeof NAV)[number] = { path: "/admin/clients", label: "Clients", icon: "customers" };
 
 /** Left menu on wide screens; a top bar with a slide-over menu on phones. */
 export function Shell({
@@ -29,7 +31,8 @@ export function Shell({
   onSignOut,
   client,
   paused,
-  picker,
+  showClients,
+  viewing,
   children,
 }: {
   calendar: AdminCalendar;
@@ -45,15 +48,17 @@ export function Shell({
   client: boolean;
   /** This calendar is a paused White-label client. */
   paused: boolean;
-  /** The White-label client picker, or null. */
-  picker: ReactNode;
+  /** Show the Clients menu item. */
+  showClients: boolean;
+  /** A client's calendar is open from the Clients page: its name and the way back. */
+  viewing: { name: string; onBack: () => void } | null;
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const side = useRef<HTMLElement>(null);
   const name = calendar.branding.business_name || "Your calendar";
-  const nav = billing?.enabled ? [...NAV, PLAN_NAV] : NAV;
+  const nav = [...NAV, ...(showClients ? [CLIENTS_NAV] : []), ...(billing?.enabled ? [PLAN_NAV] : [])];
   // A page under a menu item (a customer's page) keeps that item lit. The dashboard only matches itself.
   const current = nav.find((n) => n.path === path || (n.path !== "/admin" && path.startsWith(`${n.path}/`)));
 
@@ -112,7 +117,6 @@ export function Shell({
             <Icon name="close" />
           </button>
         </div>
-        {picker}
 
         <nav className="admin-nav" aria-label="Calendar">
           {nav.map((item) => (
@@ -165,6 +169,14 @@ export function Shell({
       </aside>
 
       <main className="admin-main" tabIndex={-1}>
+        {viewing && (
+          <div className="viewing-bar" role="status">
+            Viewing {viewing.name} —{" "}
+            <button type="button" className="link" onClick={viewing.onBack}>
+              Back to my clients
+            </button>
+          </div>
+        )}
         <Banners billing={billing} client={client} paused={paused} navigate={navigate} />
         <div className="admin-main-inner">{children}</div>
       </main>
