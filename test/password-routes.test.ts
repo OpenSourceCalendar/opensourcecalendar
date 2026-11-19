@@ -189,6 +189,77 @@ describe("setting and changing a password", () => {
     expect(await json(await set(env, token, { password: NEW }))).toEqual({ error: "reauth_required" });
   });
 
+  it("a token whose version was bumped can't sign out everywhere or set a password", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    await env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(a.userId).run();
+    expect((await req(env, "/api/admin/sign-out-everywhere", { token: a.token, method: "POST" })).status).toBe(401);
+    expect((await set(env, a.token, { password: NEW })).status).toBe(401);
+    const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id = ?").bind(a.userId).first<{ password_hash: string | null }>();
+    expect(row!.password_hash).toBeNull();
+  });
+
+  it("a password change racing another sign-out writes nothing and renews nothing", async () => {
+    const { env, sent } = setup();
+    const a = await hostedAccount(env);
+    await req(env, "/api/account/email-link", { json: { email: `${a.userId}@example.test` } });
+    const link = linkToken(sent.at(-1)!);
+    // The breach check runs after requireSession let the request in: bump the version right then.
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(a.userId).run();
+      return new Response("");
+    });
+    expect(await json(await set(env, a.token, { password: NEW }))).toEqual({ error: "unauthorized" });
+    const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id = ?").bind(a.userId).first<{ password_hash: string | null }>();
+    expect(row!.password_hash).toBeNull();
+    expect((await req(env, "/api/account/email-link/verify", { json: { token: link } })).status).toBe(200);
+  });
+
+  it("sign out everywhere racing another sign-out renews nothing", async () => {
+    const { env } = setup();
+    const a = await hostedAccount(env);
+    // Bump the version just before the route's own bump runs (after requireSession checked it).
+    const real = env.DB;
+    const DB = new Proxy(real, {
+      get(t, k) {
+        if (k === "prepare") {
+          return (sql: string) => sql.startsWith("UPDATE users SET session_version") && sql.includes("AND session_version = ?")
+            ? { bind: (...args: unknown[]) => ({ first: async () => {
+              await t.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(a.userId).run();
+              return t.prepare(sql).bind(...args).first();
+            } }) }
+            : t.prepare(sql);
+        }
+        const v = Reflect.get(t, k);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    expect((await req({ ...env, DB }, "/api/admin/sign-out-everywhere", { token: a.token, method: "POST" })).status).toBe(401);
+  });
+
+  it("a client's notice email is in the client's name only", async () => {
+    const { env, sent } = setup();
+    const agency = await hostedAccount(env);
+    await env.DB.prepare("UPDATE calendars SET branding = ? WHERE id = ?").bind(JSON.stringify({ business_name: "Acme Plumbing" }), agency.calendarId).run();
+    const client = await clientUser(env, agency.calendarId);
+    expect((await set(env, client.token, { password: NEW })).status).toBe(200);
+    const mail = sent.at(-1)!;
+    expect(mail.from.name).toBe("Acme Plumbing");
+    expect(mail.text).toContain("your booking calendar for Acme Plumbing");
+    expect(`${mail.subject} ${mail.text} ${mail.html}`).not.toContain("Open Source Calendar");
+  });
+
+  it("a client whose calendar is gone gets neutral wording", async () => {
+    const { env, sent } = setup();
+    const client = await clientUser(env, `cal_gone_${uniq()}`);
+    expect((await set(env, client.token, { password: NEW })).status).toBe(200);
+    const mail = sent.at(-1)!;
+    expect(mail.from.name).toBe("Your booking calendar");
+    expect(mail.text).toContain("The password for your booking calendar was just set.");
+    expect(`${mail.subject} ${mail.text} ${mail.html}`).not.toContain("Open Source Calendar");
+  });
+
   it("a password change re-issues this device's token with the old sign-in time", async () => {
     const { env } = setup();
     const u = await userWithPassword(env);

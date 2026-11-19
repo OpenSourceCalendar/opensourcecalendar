@@ -29,14 +29,18 @@ export function clientInviteEmail(from: string, to: string, link: string, brand:
   return { to, from: { email: from, name: brand }, subject: "Your booking calendar is ready — set your password", text, html };
 }
 
-/** After a password is set or changed. `brand` = the client's name for client sign-ins, null for everyone else. */
+/**
+ * After a password is set or changed. `brand` = the client's name for client sign-ins ("" if its calendar is gone:
+ * neutral wording, never the product's name), null for everyone else.
+ */
 export function passwordSetEmail(from: string, to: string, changed: boolean, brand: string | null): OutgoingEmail {
   const what = changed ? "changed" : "set";
-  const help = brand
+  const client = brand !== null;
+  const help = client
     ? "If this wasn't you, use “Email me a sign-in link” on your sign-in page, change your password, and tell your provider."
     : "If this wasn't you, use “Email me a sign-in link” on the log-in page, change your password, and contact support@opensourcecalendar.com.";
-  const where = brand ? `your booking calendar for ${brand}` : "your Open Source Calendar account";
+  const where = !client ? "your Open Source Calendar account" : brand ? `your booking calendar for ${brand}` : "your booking calendar";
   const text = `The password for ${where} was just ${what}. Other devices were signed out.\n\n${help}\n`;
   const html = `<p>The password for ${esc(where)} was just ${what}. Other devices were signed out.</p><p>${esc(help)}</p>`;
-  return { to, from: { email: from, name: brand ?? "Open Source Calendar" }, subject: `Your password was ${what}`, text, html };
+  return { to, from: { email: from, name: !client ? "Open Source Calendar" : brand || "Your booking calendar" }, subject: `Your password was ${what}`, text, html };
 }

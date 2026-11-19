@@ -8,7 +8,7 @@ import { weakPassword } from "../accounts/breach";
 import { clientBrand } from "../accounts/client-users";
 import { passwordSetEmail } from "../accounts/email";
 import { hashPassword, passwordProblem, passwordsOn, verifyPassword } from "../accounts/password";
-import { revokeTokens } from "../accounts/store";
+import { revokeTokenStatements } from "../accounts/store";
 import { emailFrom } from "../email/send";
 import { parseBody } from "../lib/http";
 import { smallBody } from "./accounts";
@@ -47,24 +47,35 @@ passwordRoutes.post("/password", smallBody, async (c) => {
   const brand = user.client_calendar_id ? await clientBrand(db, user.client_calendar_id) : null;
   if (await weakPassword(body.data.password, [user.email, brand?.name])) return c.json({ error: "password_weak" }, 400);
 
-  await db.prepare("UPDATE users SET password_hash = ?, password_set_at = ?, session_version = session_version + 1 WHERE id = ?")
-    .bind(await hashPassword(c.env, body.data.password), now, user.id).run();
-  await revokeTokens(db, user.id, user.email, now);
+  // One batch, all guarded by the version this token carries: if another request (a password change, "sign out of all
+  // devices") bumped it after requireSession let this one in, nothing is written and this token isn't renewed.
+  const hash = await hashPassword(c.env, body.data.password);
+  const [bumped] = await db.batch<{ session_version: number }>([
+    db.prepare("UPDATE users SET password_hash = ?, password_set_at = ?, session_version = session_version + 1 WHERE id = ? AND session_version = ? RETURNING session_version")
+      .bind(hash, now, user.id, c.var.sessionVersion),
+    ...revokeTokenStatements(db, user.id, user.email, now, { version: c.var.sessionVersion + 1, setAt: now }),
+  ]);
+  const version = bumped.results[0]?.session_version;
+  if (version === undefined) return c.json({ error: "unauthorized" }, 401);
   const from = emailFrom(c.env);
   if (from && c.env.EMAIL) {
-    const mail = passwordSetEmail(from, user.email, !!user.password_hash, user.client_calendar_id ? (brand?.name ?? "your booking calendar") : null);
+    // A client sign-in whose calendar is gone gets neutral wording, never the product's name.
+    const mail = passwordSetEmail(from, user.email, !!user.password_hash, user.client_calendar_id ? (brand?.name ?? "") : null);
     c.executionCtx.waitUntil(c.env.EMAIL.send(mail).catch((err) => console.error(JSON.stringify({ event: "password_email_failed", error: String(err).slice(0, 200) }))));
   }
   // This device stays signed in with a token of the new version; every other one is signed out. The new token keeps
   // this sign-in's issue time: changing a password is not a fresh sign-in.
-  return c.json(await hostedSession(c.env, user.id, now, c.var.sessionIssuedAt));
+  return c.json(await hostedSession(c.env, user.id, now, c.var.sessionIssuedAt, version));
 });
 
 passwordRoutes.post("/sign-out-everywhere", async (c) => {
   if (c.var.app.id !== HOSTED_APP) return c.json({ error: "not_found" }, 404);
   const now = Date.now();
-  await c.env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ?").bind(c.var.userId).run();
+  // Only from the version this token carries: a token already signed out by a racing bump can't renew itself.
+  const row = await c.env.DB.prepare("UPDATE users SET session_version = session_version + 1 WHERE id = ? AND session_version = ? RETURNING session_version")
+    .bind(c.var.userId, c.var.sessionVersion).first<{ session_version: number }>();
+  if (!row) return c.json({ error: "unauthorized" }, 401);
   // Same sign-in, same issue time: otherwise a stolen old token could call this to look "recently signed in" and then
   // add a password without knowing the current one.
-  return c.json(await hostedSession(c.env, c.var.userId, now, c.var.sessionIssuedAt));
+  return c.json(await hostedSession(c.env, c.var.userId, now, c.var.sessionIssuedAt, row.session_version));
 });

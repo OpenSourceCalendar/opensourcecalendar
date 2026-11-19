@@ -106,10 +106,20 @@ export async function cleanUpLinks(db: D1Database, now: number) {
   await db.prepare("DELETE FROM login_links WHERE created_at < ?").bind(now - LINK_KEEP_MS).run();
 }
 
-/** After a password is set: the user's open client invites and sign-in links stop working. */
+/**
+ * After a password is set: the user's open client invites and sign-in links stop working. With `onlyIf`, they stop only
+ * if the users row now has that session_version and password_set_at (so they can run in the same batch as a guarded
+ * password write and do nothing when that write didn't happen).
+ */
+export function revokeTokenStatements(db: D1Database, userId: string, email: string, now: number, onlyIf?: { version: number; setAt: number }) {
+  const guard = onlyIf ? " AND EXISTS (SELECT 1 FROM users WHERE id = ? AND session_version = ? AND password_set_at = ?)" : "";
+  const extra = onlyIf ? [userId, onlyIf.version, onlyIf.setAt] : [];
+  return [
+    db.prepare(`UPDATE client_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL${guard}`).bind(now, userId, ...extra),
+    db.prepare(`UPDATE login_links SET used_at = ? WHERE email = ? AND used_at IS NULL${guard}`).bind(now, email, ...extra),
+  ];
+}
+
 export async function revokeTokens(db: D1Database, userId: string, email: string, now: number) {
-  await db.batch([
-    db.prepare("UPDATE client_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").bind(now, userId),
-    db.prepare("UPDATE login_links SET used_at = ? WHERE email = ? AND used_at IS NULL").bind(now, email),
-  ]);
+  await db.batch(revokeTokenStatements(db, userId, email, now));
 }

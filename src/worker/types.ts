@@ -52,5 +52,7 @@ export type AppEnv = {
     clientCalendarId: string | null;
     /** When this session's token was issued (0 = unknown), for "signed in recently" checks. */
     sessionIssuedAt: number;
+    /** The hosted account's session_version this token carries (0 otherwise); version bumps are conditional on it. */
+    sessionVersion: number;
   };
 };

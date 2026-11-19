@@ -62,6 +62,7 @@ export const requireApp = createMiddleware<AppEnv>(async (c, next) => {
   c.set("userId", user);
   c.set("clientCalendarId", null);
   c.set("sessionIssuedAt", 0);
+  c.set("sessionVersion", 0);
   await next();
 });
 
@@ -107,12 +108,13 @@ export const HOSTED_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * Google, invite accept); the old session's issue time when re-issuing for the same sign-in (password change, sign out
  * of all devices), so re-issuing never makes a session "recently signed in".
  */
-export async function hostedSession(env: AppEnv["Bindings"], userId: string, now: number, issuedAt = now) {
+export async function hostedSession(env: AppEnv["Bindings"], userId: string, now: number, issuedAt = now, version?: number) {
   // Its key hash can never match a real key, like the standalone app's.
   await env.DB.prepare("INSERT OR IGNORE INTO apps (id, name, api_key_hash, created_at) VALUES (?, 'Hosted', ?, ?)")
     .bind(HOSTED_APP, `none:${HOSTED_APP}`, now).run();
-  const row = await env.DB.prepare("SELECT session_version FROM users WHERE id = ?").bind(userId).first<{ session_version: number }>();
-  const token = await signSession(requireSessionSecret(env.SESSION_SECRET), { a: HOSTED_APP, u: userId, v: row?.session_version ?? 0, t: issuedAt }, now, HOSTED_SESSION_TTL_MS);
+  // `version` = the one a guarded bump just returned; read it here otherwise.
+  const v = version ?? (await env.DB.prepare("SELECT session_version FROM users WHERE id = ?").bind(userId).first<{ session_version: number }>())?.session_version ?? 0;
+  const token = await signSession(requireSessionSecret(env.SESSION_SECRET), { a: HOSTED_APP, u: userId, v, t: issuedAt }, now, HOSTED_SESSION_TTL_MS);
   return { token, expires_at: new Date(now + HOSTED_SESSION_TTL_MS).toISOString() };
 }
 
@@ -151,6 +153,7 @@ export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   c.set("userId", s.u);
   c.set("clientCalendarId", clientCalendarId);
   c.set("sessionIssuedAt", s.t);
+  c.set("sessionVersion", s.v);
   await next();
 });
 
