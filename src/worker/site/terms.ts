@@ -1,6 +1,6 @@
 import { GITHUB_URL, page, SITE_NAME, SUPPORT_EMAIL } from "./layout";
 
-export const TERMS_UPDATED = "November 17, 2026";
+export const TERMS_UPDATED = "November 19, 2026";
 const TERMS_EMAIL = "terms@opensourcecalendar.com";
 
 export function termsPage(login?: string) {
@@ -11,7 +11,7 @@ export function termsPage(login?: string) {
 
 <h2>The software and the hosted service</h2>
 <p>The ${SITE_NAME} software is open source under the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License v3.0</a> (AGPL-3.0). If you run your own copy from <a href="${GITHUB_URL}">the source code</a>, that licence governs your use of the code, and these terms do not apply to your copy.</p>
-<p>These terms apply to the service we run for you. Hosted plans are not on sale yet. Until they are, the service is offered as is, and features may change.</p>
+<p>These terms apply to the service we run for you. Hosted accounts are open by invitation for now. The service is offered as is, and features may change.</p>
 
 <h2>Booking an appointment</h2>
 <p>If you book through a booking page, your appointment is with that business, not with us. The business sets its services, prices, hours and policies, and is responsible for the appointment itself. Please give accurate details, and use the link in your email to change or cancel.</p>
