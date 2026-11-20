@@ -57,9 +57,7 @@ export async function createUserWithInvite(
     .bind(now, id, inviteHash, now).run();
   if (took.meta.changes !== 1) return (await lookUp(db, email, googleSub)) ?? { inviteUsed: true };
   try {
-    await db.prepare("INSERT INTO users (id, email, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(id, email, googleSub ?? null, now, now).run();
-    return { user: { id, email, google_sub: googleSub ?? null, client_calendar_id: null } };
+    return await insertUser(db, id, email, googleSub, now);
   } catch (err) {
     // Someone signed up with this email or Google account at the same moment, or D1 failed: give the invite back.
     await db.prepare("UPDATE invites SET used_at = NULL, used_by = NULL WHERE token_hash = ? AND used_by = ?").bind(inviteHash, id).run();
@@ -67,6 +65,32 @@ export async function createUserWithInvite(
     if (again) return again;
     throw err;
   }
+}
+
+function insertUser(db: D1Database, id: string, email: string, googleSub: string | undefined, now: number): Promise<Found> {
+  return db.prepare("INSERT INTO users (id, email, google_sub, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, email, googleSub ?? null, now, now).run()
+    .then(() => ({ user: { id, email, google_sub: googleSub ?? null, client_calendar_id: null } }));
+}
+
+/** Open sign-up: a new account with no invite. Losing a race to the same person (same email or Google id) logs in to theirs. */
+export async function createUser(db: D1Database, email: string, googleSub: string | undefined, now: number): Promise<Found> {
+  try {
+    return await insertUser(db, newId("usr"), email, googleSub, now);
+  } catch (err) {
+    const again = await lookUp(db, email, googleSub);
+    if (again) return again;
+    throw err;
+  }
+}
+
+/** Install-wide cap on new accounts in 24 hours (open sign-up's safety valve). Logs when hit. */
+export const NEW_ACCOUNTS_PER_DAY = 100;
+export async function newAccountAllowed(db: D1Database, now: number): Promise<boolean> {
+  const r = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE created_at > ? AND created_at <= ?").bind(now - 24 * HOUR, now).first<{ n: number }>();
+  if ((r?.n ?? 0) < NEW_ACCOUNTS_PER_DAY) return true;
+  console.error(JSON.stringify({ event: "new_accounts_daily_cap" }));
+  return false;
 }
 
 export async function touchLogin(db: D1Database, userId: string, now: number) {

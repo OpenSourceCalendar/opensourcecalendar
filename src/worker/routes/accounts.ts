@@ -1,4 +1,4 @@
-// Hosted sign-up and log-in (invite-only). Everything here 404s unless signupOn(env).
+// Hosted sign-up and log-in (invite-only, or open with SIGNUP = "open"). Everything here 404s unless signupOn(env).
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getCookie } from "hono/cookie";
@@ -7,11 +7,11 @@ import { HOSTED_APP, hostedSession } from "../auth";
 import { forgetAttempt, INVITE_TOKEN_LIMITS, ipKey, startAttempt } from "../accounts/attempts";
 import { weakPassword } from "../accounts/breach";
 import { acceptInvite, clientBrand, openInvite } from "../accounts/client-users";
-import { publicBase, signupOn } from "../accounts/config";
+import { publicBase, signupOn, signupOpen } from "../accounts/config";
 import { clientSignInEmail, passwordSetEmail, signInEmail } from "../accounts/email";
 import { DUMMY_HASH, hashPassword, needsRehash, passwordProblem, passwordsOn, verifyPassword } from "../accounts/password";
 import { readIdToken, signSignInState, verifySignInState } from "../accounts/signin-state";
-import { createUserWithInvite, inviteOpen, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
+import { createUser, createUserWithInvite, inviteOpen, newAccountAllowed, linkAllowed, lookUp, normalizeEmail, saveLink, touchLogin, useLink, type Found } from "../accounts/store";
 import { emailFrom } from "../email/send";
 import { exchangeCode, googleConfig, signInUrl } from "../google/client";
 import { parseBody } from "../lib/http";
@@ -28,7 +28,7 @@ accounts.use("*", async (c, next) => (signupOn(c.env) ? next() : c.notFound()));
 const canEmail = (env: Bindings) => !!emailFrom(env) && !!env.EMAIL;
 
 accounts.get("/config", (c) =>
-  c.json({ google: !!googleConfig(c.env), email: canEmail(c.env), passwords: passwordsOn(c.env), turnstile_site_key: c.env.TURNSTILE_SITE_KEY || null, public_url: publicBase(c.env) }));
+  c.json({ google: !!googleConfig(c.env), email: canEmail(c.env), passwords: passwordsOn(c.env), turnstile_site_key: c.env.TURNSTILE_SITE_KEY || null, public_url: publicBase(c.env), open: signupOpen(c.env) }));
 
 accounts.get("/invite/:token", async (c) =>
   c.json({ valid: await inviteOpen(c.env.DB, await sha256Hex(c.req.param("token")), Date.now()) }));
@@ -64,10 +64,13 @@ async function sendLink(env: Bindings, email: string, invite: string | null, ip:
   const db = env.DB;
   const found = await lookUp(db, email);
   let inviteHash: string | null = null;
+  let signup = false;
   if (!found) {
-    if (!invite) return;
-    inviteHash = await sha256Hex(invite);
-    if (!(await inviteOpen(db, inviteHash, now))) return;
+    // A valid invite first; otherwise, with open sign-up, a plain sign-up link (under the daily cap).
+    const hash = invite ? await sha256Hex(invite) : null;
+    if (hash && (await inviteOpen(db, hash, now))) inviteHash = hash;
+    else if (!signupOpen(env) || !(await newAccountAllowed(db, now))) return;
+    signup = true;
   }
   if (!(await linkAllowed(db, email, await sha256Hex(`ip:${ip}`), now))) return;
   const token = await saveLink(db, email, inviteHash, await sha256Hex(`ip:${ip}`), now);
@@ -79,7 +82,7 @@ async function sendLink(env: Bindings, email: string, invite: string | null, ip:
     const path = brand ? `/login/${brand.slug}/verify` : "/login/verify";
     await env.EMAIL.send(clientSignInEmail(from, email, `${publicBase(env)}${path}#t=${token}`, brand?.name ?? ""));
   } else {
-    await env.EMAIL.send(signInEmail(from, email, `${publicBase(env)}/login/verify#t=${token}`, !!inviteHash));
+    await env.EMAIL.send(signInEmail(from, email, `${publicBase(env)}/login/verify#t=${token}`, signup));
   }
 }
 
@@ -92,6 +95,7 @@ accounts.post("/email-link/verify", async (c) => {
   if (!link) return c.json({ error: "link_expired" }, 400);
   let found: Found | { inviteUsed: true } = await lookUp(db, link.email);
   if (!found && link.inviteHash) found = await createUserWithInvite(db, link.email, undefined, link.inviteHash, now);
+  else if (!found && signupOpen(c.env) && (await newAccountAllowed(db, now))) found = await createUser(db, link.email, undefined, now);
   if (!found) return c.json({ error: "link_expired" }, 400); // a log-in link for an account deleted since
   if (!("user" in found)) return c.json({ error: "invite_used" }, 400);
   await touchLogin(db, found.user.id, now);
@@ -258,6 +262,7 @@ accounts.get("/google/callback", async (c) => {
   const db = c.env.DB;
   let found: Found | { inviteUsed: true } = await lookUp(db, who.email, who.sub);
   if (!found && state.inviteHash) found = await createUserWithInvite(db, who.email, who.sub, state.inviteHash, now);
+  else if (!found && signupOpen(c.env) && (await newAccountAllowed(db, now))) found = await createUser(db, who.email, who.sub, now);
   if (!found) return fail("no_account");
   if ("clientOnly" in found) return fail("client_account");
   if ("mismatch" in found) return fail("google_mismatch");

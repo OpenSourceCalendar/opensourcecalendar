@@ -47,6 +47,7 @@ TURNSTILE_SITE_KEY = ""
 # Base for links in emails and Google events, and the webhook own-host check. Set it once you use your own domain.
 # PUBLIC_URL = "https://book.example.com"
 # Hosted sign-up and log-in (opensourcecalendar.com's own service). Leave unset on your own install.
+# "invite": new accounts need an invite link; "open": anyone can create a Free account (100 new accounts a day at most).
 # SIGNUP = "invite"
 # Password sign-in (hosted service only) also needs the secret PASSWORD_PEPPER: `openssl rand -base64 32 | npx wrangler secret put PASSWORD_PEPPER`.
 # Keep a copy: if it changes, every stored password stops working.

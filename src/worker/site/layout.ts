@@ -123,13 +123,14 @@ footer nav{display:flex;flex-wrap:wrap;gap:8px 20px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 `;
 
-function header(onHome: boolean, login?: string) {
+/** `signup` (open sign-up only): the main button goes to sign-up instead of the waitlist. */
+function header(onHome: boolean, login?: string, signup?: string) {
   const h = onHome ? "" : "/";
   return `<a class="skip" href="#main">Skip to content</a>
 <div class="wrap top">
 <a class="logo" href="/"><img src="/favicon.svg" width="36" height="36" alt="">${SITE_NAME}</a>
 <nav class="nav" aria-label="Main"><a href="${h}#features">Features</a><a href="${h}#pricing">Pricing</a><a href="${h}#agencies">White-label</a><a href="${GITHUB_URL}">GitHub</a>${login ? `<a href="${login}">Log in</a>` : ""}</nav>
-<a class="btn btn-light" href="${h}#waitlist">Join the waitlist</a>
+${signup ? `<a class="btn btn-light" href="${signup}">Get started free</a>` : `<a class="btn btn-light" href="${h}#waitlist">Join the waitlist</a>`}
 </div>`;
 }
 
@@ -139,7 +140,7 @@ const FOOTER = `<footer><div class="wrap">
 </div></footer>`;
 
 /** A whole page. `band` is what goes in the brand-colored top after the header; `body` follows in the light sheet. */
-export function page(opts: { title: string; description: string; path: string; band: string; body: string; login?: string }) {
+export function page(opts: { title: string; description: string; path: string; band: string; body: string; login?: string; signup?: string }) {
   const onHome = opts.path === "/";
   return `<!doctype html>
 <html lang="en">
@@ -158,7 +159,7 @@ export function page(opts: { title: string; description: string; path: string; b
 <style>${CSS}</style>
 </head>
 <body>
-<div class="band">${header(onHome, opts.login)}${opts.band}</div>
+<div class="band">${header(onHome, opts.login, opts.signup)}${opts.band}</div>
 <main id="main" class="sheet">${opts.body}${FOOTER}</main>
 </body>
 </html>`;

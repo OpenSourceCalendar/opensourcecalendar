@@ -66,21 +66,23 @@ const WAIT_MSG: Record<Exclude<WaitlistState, null>, string> = {
   bad: "That email address doesn’t look right. Please check it and try again.",
 };
 
-export function homePage(wait: WaitlistState, login?: string) {
+/** `signup` set = open sign-up: plans are "Available now" and every hosted button goes to sign-up; no waitlist form. */
+export function homePage(wait: WaitlistState, login?: string, signup?: string) {
+  const plansNow = PLANS.map((p) => (signup && p.href === "#waitlist" ? { ...p, now: true, cta: "Get started free", href: signup } : p));
   const band = `<div class="wrap hero">
 <div class="hero-text">
 <span class="pill">Open source · AGPL-3.0 · Runs on Cloudflare</span>
 <h1>The booking app you can own for free.</h1>
 <p class="lead">Let customers book, change and cancel on their own. Free to host yourself, or we’ll host it for you for $10 a month with unlimited staff calendars.</p>
-<div class="actions"><a class="btn btn-light" href="${GITHUB_URL}">${GITHUB_ICON}Get it free on GitHub</a><a class="btn btn-ghost" href="#waitlist">Join the hosted waitlist</a></div>
-<span class="small">Hosted plans launch soon. The Free plan needs no card; paid plans start with a 14-day free trial.</span>
+<div class="actions"><a class="btn btn-light" href="${GITHUB_URL}">${GITHUB_ICON}Get it free on GitHub</a>${signup ? `<a class="btn btn-ghost" href="${signup}">Start free, hosted</a>` : `<a class="btn btn-ghost" href="#waitlist">Join the hosted waitlist</a>`}</div>
+<span class="small">${signup ? "" : "Hosted plans launch soon. "}The Free plan needs no card; paid plans start with a 14-day free trial.</span>
 </div>
 <div class="phone"><img src="/screenshots/booking-phone.png" width="780" height="2106" alt="A booking page on a phone: the customer has picked drain cleaning on Wednesday, November 18 at 10:30 AM"></div>
 </div>`;
 
   const features = FEATURES.map(([t, p], i) => `<div class="card"><span class="num">${String(i + 1).padStart(2, "0")}</span><h3>${t}</h3><p>${p}</p></div>`).join("");
   const steps = STEPS.map(([t, p], i) => `<li><b>${i + 1}</b><span><strong>${t}</strong>${p}</span></li>`).join("");
-  const plans = PLANS.map((p) => `<div class="plan${p.hi ? " hi" : ""}">
+  const plans = plansNow.map((p) => `<div class="plan${p.hi ? " hi" : ""}">
 <div class="plan-head"><h3>${p.name}</h3><span class="badge${p.now ? " now" : ""}">${p.now ? "Available now" : "Coming soon"}</span></div>
 <div class="price"><b>${p.price}</b><span>${p.per}</span></div>
 <span class="per-year">${p.yearly}</span>
@@ -135,7 +137,7 @@ ${gallery}
 </section>
 
 <section id="pricing" aria-labelledby="h-pricing" class="wrap">
-<div class="intro"><h2 id="h-pricing">Simple prices. Unlimited staff on every paid plan.</h2><p>Hosted plans are coming soon. Pay yearly and get two months free.</p></div>
+<div class="intro"><h2 id="h-pricing">Simple prices. Unlimited staff on every paid plan.</h2><p>${signup ? "Start free and upgrade any time." : "Hosted plans are coming soon."} Pay yearly and get two months free.</p></div>
 <div class="plans">${plans}</div>
 <p class="note">Add-ons: custom design $100 one-time · your own domain $50 setup · text reminders $50 setup + $20/month.</p>
 </section>
@@ -157,7 +159,7 @@ ${gallery}
 ${faq}
 </section>
 
-<section id="waitlist" aria-labelledby="h-wait" class="band wait">
+${signup ? "" : `<section id="waitlist" aria-labelledby="h-wait" class="band wait">
 <div class="wrap">
 <h2 id="h-wait">Be first when hosting opens</h2>
 <p>One email when it’s ready. Nothing else.</p>
@@ -170,7 +172,7 @@ ${msg}
 </form>
 <p class="small">We only use it to tell you hosting is open. See our <a href="/privacy" style="color:#fff">privacy policy</a>.</p>
 </div>
-</section>
+</section>`}
 </div>`;
 
   return page({
@@ -180,5 +182,6 @@ ${msg}
     band,
     body,
     login,
+    signup,
   });
 }

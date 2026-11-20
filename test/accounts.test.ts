@@ -4,7 +4,7 @@ import { app } from "../src/worker/index";
 import { sha256Hex } from "../src/worker/lib/ids";
 import { testEnv, uniq } from "./helpers";
 import { signState } from "../src/worker/google/state";
-import { cleanUpLinks } from "../src/worker/accounts/store";
+import { cleanUpLinks, newAccountAllowed, NEW_ACCOUNTS_PER_DAY } from "../src/worker/accounts/store";
 
 const BASE = "https://book.example.test";
 type Sent = { to: string; subject: string; text: string };
@@ -55,7 +55,9 @@ describe("the switch", () => {
   it("tells the pages what this install offers", async () => {
     const { env } = envWith();
     const cfg = (await (await req(env, "/api/account/config")).json()) as Record<string, unknown>;
-    expect(cfg).toEqual({ google: true, email: true, passwords: true, turnstile_site_key: null, public_url: BASE });
+    expect(cfg).toEqual({ google: true, email: true, passwords: true, turnstile_site_key: null, public_url: BASE, open: false });
+    const open = (await (await req(envWith({ SIGNUP: "open" }).env, "/api/account/config")).json()) as Record<string, unknown>;
+    expect(open.open).toBe(true);
   });
 });
 
@@ -381,6 +383,60 @@ describe("Google sign-in", () => {
     const { state, cookie } = await startGoogle(env);
     fakeGoogle({ sub, email: email(), email_verified: true });
     expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=client_account`);
+  });
+});
+
+describe("open sign-up (SIGNUP = open)", () => {
+  it("emails an unknown address a sign-up link, and the link makes the account", async () => {
+    const { env, sent } = envWith({ SIGNUP: "open" });
+    const address = email();
+    expect((await askLink(env, { email: address })).status).toBe(202);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain("finish creating your account");
+    const res = await verify(env, linkToken(sent[0]));
+    expect(res.status).toBe(200);
+    const s = (await res.json()) as { token: string; email: string };
+    expect(s.email).toBe(address);
+    expect(await (await asOwner(env, s.token, "/account")).json()).toEqual({ email: address, role: "account", has_password: false });
+  });
+
+  it("still logs existing accounts in with a log-in link", async () => {
+    const { env, sent } = envWith({ SIGNUP: "open" });
+    const address = email();
+    await askLink(env, { email: address });
+    await verify(env, linkToken(sent[0]));
+    await askLink(env, { email: address });
+    expect(sent[1].text).toContain("log in on Open Source Calendar");
+    expect((await verify(env, linkToken(sent[1]))).status).toBe(200);
+  });
+
+  it("creates an account for an unknown, verified Google login", async () => {
+    const { env } = envWith({ SIGNUP: "open" });
+    const address = email();
+    const { state, cookie } = await startGoogle(env);
+    fakeGoogle({ sub: `g-${uniq()}`, email: address, email_verified: true });
+    const res = await callback(env, state, cookie);
+    expect(landing(res)).toMatch(new RegExp(`^${BASE}/admin#login=`));
+    const token = landing(res).split("#login=")[1];
+    expect(await (await asOwner(env, token, "/account")).json()).toEqual({ email: address, role: "account", has_password: false });
+  });
+
+  it("still refuses an unverified Google email", async () => {
+    const { env } = envWith({ SIGNUP: "open" });
+    const { state, cookie } = await startGoogle(env);
+    fakeGoogle({ sub: `g-${uniq()}`, email: email() });
+    expect(landing(await callback(env, state, cookie))).toBe(`${BASE}/login?error=google`);
+  });
+
+  it("caps new accounts per day across the install", async () => {
+    const { env } = envWith({ SIGNUP: "open" });
+    const t = Date.now() + 3650 * 86400_000; // a quiet day of its own, far from other tests' accounts
+    expect(await newAccountAllowed(env.DB, t)).toBe(true);
+    const rows = Array.from({ length: NEW_ACCOUNTS_PER_DAY }, (_, i) =>
+      env.DB.prepare("INSERT INTO users (id, email, created_at, last_login_at) VALUES (?, ?, ?, ?)").bind(`usr-cap-${i}-${uniq()}`, `cap-${i}-${uniq()}@example.test`, t - 1000, t - 1000));
+    await env.DB.batch(rows);
+    expect(await newAccountAllowed(env.DB, t)).toBe(false);
+    expect(await newAccountAllowed(env.DB, t + 2 * 86400_000)).toBe(true);
   });
 });
 

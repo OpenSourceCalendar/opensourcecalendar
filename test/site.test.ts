@@ -47,6 +47,19 @@ describe("website pages", () => {
     expect(await (await app.request("/", {}, on)).text()).toContain('href="https://book.example.test/login"');
   });
 
+  it("with open sign-up, sends people to sign up instead of the waitlist", async () => {
+    const open = { ...siteOn, SIGNUP: "open", PUBLIC_URL: "https://book.example.test" };
+    const home = await (await app.request("/", {}, open)).text();
+    expect(home).toContain('href="https://book.example.test/signup"');
+    expect(home).toContain("Get started free");
+    expect(home).not.toContain('action="/api/waitlist"');
+    expect(home).not.toContain("Coming soon</span>");
+    expect(await (await app.request("/privacy", {}, open)).text()).toContain('href="https://book.example.test/signup"');
+    const invite = await (await app.request("/", {}, { ...open, SIGNUP: "invite" })).text();
+    expect(invite).toContain('action="/api/waitlist"');
+    expect(invite).not.toContain("Get started free");
+  });
+
   it("shows the waitlist result only for known states", async () => {
     expect(await (await app.request("/?waitlist=joined", {}, siteOn)).text()).toContain("You’re on the list");
     expect(await (await app.request("/?waitlist=bad", {}, siteOn)).text()).toContain("doesn’t look right");

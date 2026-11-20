@@ -151,7 +151,9 @@ function SignInOptions({ cfg, invite, google = true, human }: { cfg: AccountConf
   if (state === "sent") {
     return (
       <p className="lede" role="status">
-        Check your email. If you have an account{invite ? " or a valid invite" : ""}, a sign-in link is on its way. It works for 15 minutes.
+        {cfg.open
+          ? "Check your email. Your sign-in link is on its way. It works for 15 minutes."
+          : `Check your email. If you have an account${invite ? " or a valid invite" : ""}, a sign-in link is on its way. It works for 15 minutes.`}
       </p>
     );
   }
@@ -194,6 +196,17 @@ export function SignupPage() {
 
   if (cfg === "off") return <Off />;
   if (!cfg || valid === null) return <Loading />;
+  if (!valid && cfg.open) {
+    return (
+      <Card>
+        <h1 className="title">Create your free account</h1>
+        <p className="lede">No card needed. Choose how you'd like to sign in; we'll set up your account on the way.</p>
+        <SignInOptions cfg={cfg} human={human} />
+        {human.widget}
+        <p className="muted">Already have an account? <a href="/login">Log in</a></p>
+      </Card>
+    );
+  }
   if (!valid) {
     return (
       <Card>
@@ -227,9 +240,11 @@ const LOGIN_ERRORS: Record<string, string> = {
 export function LoginPage() {
   const cfg = useAccountConfig();
   const human = useTurnstile(cfg && cfg !== "off" ? cfg.turnstile_site_key : null);
-  const [error] = useState(() => LOGIN_ERRORS[new URLSearchParams(window.location.search).get("error") ?? ""] ?? "");
+  const [code] = useState(() => new URLSearchParams(window.location.search).get("error") ?? "");
   if (cfg === "off") return <Off />;
   if (!cfg) return <Loading />;
+  // With open sign-up, no_account only happens when the day's new-account cap is reached.
+  const error = code === "no_account" && cfg.open ? "We couldn't create your account right now. Please try again tomorrow." : LOGIN_ERRORS[code] ?? "";
   return (
     <Card>
       <h1 className="title">Log in</h1>
@@ -243,6 +258,7 @@ export function LoginPage() {
       <SignInOptions cfg={cfg} human={human} />
       {/* One security check for both forms. */}
       {human.widget}
+      {cfg.open && <p className="muted center">New here? <a href="/signup">Create a free account</a></p>}
     </Card>
   );
 }

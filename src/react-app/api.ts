@@ -185,7 +185,7 @@ export function errorText(e: unknown): string {
   }
 }
 
-export interface AccountConfig { google: boolean; email: boolean; passwords: boolean; turnstile_site_key: string | null; public_url: string }
+export interface AccountConfig { google: boolean; email: boolean; passwords: boolean; turnstile_site_key: string | null; public_url: string; open?: boolean }
 /** A calendar's look for its sign-in pages. */
 export interface LoginBrand {
   slug: string;

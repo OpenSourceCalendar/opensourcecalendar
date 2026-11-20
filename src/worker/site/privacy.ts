@@ -4,7 +4,7 @@ export const PRIVACY_UPDATED = "November 17, 2026";
 
 // Keep this in step with what the code really stores. Checked against migrations 0001–0009,
 // routes/customers.ts (deletion), google/push.ts (event contents), google/busy.ts and email/outbox.ts (30-day job cleanup).
-export function privacyPage(login?: string) {
+export function privacyPage(login?: string, signup?: string) {
   const band = `<div class="wrap doc-head"><h1>Privacy policy</h1><p>Last updated ${PRIVACY_UPDATED}</p></div>`;
   const body = `<article class="wrap"><div class="doc">
 <h2>Who we are</h2>
@@ -122,5 +122,6 @@ export function privacyPage(login?: string) {
     band,
     body,
     login,
+    signup,
   });
 }
