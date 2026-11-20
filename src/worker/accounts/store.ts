@@ -87,7 +87,7 @@ export async function createUser(db: D1Database, email: string, googleSub: strin
 /** Install-wide cap on new accounts in 24 hours (open sign-up's safety valve). Logs when hit. */
 export const NEW_ACCOUNTS_PER_DAY = 100;
 export async function newAccountAllowed(db: D1Database, now: number): Promise<boolean> {
-  const r = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE created_at > ? AND created_at <= ?").bind(now - 24 * HOUR, now).first<{ n: number }>();
+  const r = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE created_at > ? AND created_at <= ? AND client_calendar_id IS NULL").bind(now - 24 * HOUR, now).first<{ n: number }>();
   if ((r?.n ?? 0) < NEW_ACCOUNTS_PER_DAY) return true;
   console.error(JSON.stringify({ event: "new_accounts_daily_cap" }));
   return false;

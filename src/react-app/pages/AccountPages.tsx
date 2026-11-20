@@ -152,7 +152,7 @@ function SignInOptions({ cfg, invite, google = true, human }: { cfg: AccountConf
     return (
       <p className="lede" role="status">
         {cfg.open
-          ? "Check your email. Your sign-in link is on its way. It works for 15 minutes."
+          ? "Check your email. A sign-in link should arrive within a minute and works for 15 minutes. Nothing after a few minutes? Try again later."
           : `Check your email. If you have an account${invite ? " or a valid invite" : ""}, a sign-in link is on its way. It works for 15 minutes.`}
       </p>
     );
@@ -321,7 +321,7 @@ export function VerifyPage({ slug }: { slug?: string }) {
       const code = err instanceof ApiError ? err.error : "";
       // Reopening a used link while still logged in here isn't a problem: offer the calendar instead.
       if (code === "link_expired" && getToken()) return setState("already");
-      setError(code === "invite_used" ? "That invite has already been used." : code === "link_expired" ? "This link has expired or was already used. Ask for a new one." : "We couldn't log you in. Check your connection and try again.");
+      setError(code === "invite_used" ? "That invite has already been used." : code === "signups_full" ? "We can't create new accounts right now. Please try again tomorrow." : code === "link_expired" ? "This link has expired or was already used. Ask for a new one." : "We couldn't log you in. Check your connection and try again.");
       setState("error");
     }
   }

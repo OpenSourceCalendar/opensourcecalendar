@@ -437,6 +437,21 @@ describe("open sign-up (SIGNUP = open)", () => {
     await env.DB.batch(rows);
     expect(await newAccountAllowed(env.DB, t)).toBe(false);
     expect(await newAccountAllowed(env.DB, t + 2 * 86400_000)).toBe(true);
+    // White-label client sign-ins (made by agencies) don't count.
+    await env.DB.prepare("UPDATE users SET client_calendar_id = id WHERE id LIKE 'usr-cap-%' AND created_at = ?").bind(t - 1000).run();
+    expect(await newAccountAllowed(env.DB, t)).toBe(true);
+  });
+
+  it("a sign-up link opened after the day's cap filled says so", async () => {
+    const { env, sent } = envWith({ SIGNUP: "open" });
+    await askLink(env, { email: email() });
+    const now = Date.now();
+    await env.DB.batch(Array.from({ length: NEW_ACCOUNTS_PER_DAY }, (_, i) =>
+      env.DB.prepare("INSERT INTO users (id, email, created_at, last_login_at) VALUES (?, ?, ?, ?)").bind(`usr-full-${i}-${uniq()}`, `full-${i}-${uniq()}@example.test`, now, now)));
+    const res = await verify(env, linkToken(sent[0]));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("signups_full");
+    await env.DB.prepare("DELETE FROM users WHERE id LIKE 'usr-full-%'").run();
   });
 });
 

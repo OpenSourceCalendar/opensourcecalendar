@@ -4,6 +4,7 @@ import { homePage, type WaitlistState } from "./home";
 import { privacyPage } from "./privacy";
 import { termsPage } from "./terms";
 import { publicBase, signupOn, signupOpen } from "../accounts/config";
+import { billingOn } from "../billing/config";
 import type { AppEnv } from "../types";
 
 /** Enough for any real launch list; stops a script filling the table. */
@@ -48,7 +49,7 @@ site.get("/", (c) => {
   if (!on(c.env)) return html(PLAIN_HOME);
   const w = c.req.query("waitlist");
   const state: WaitlistState = w === "joined" || w === "bad" ? w : null;
-  const res = html(homePage(state, loginUrl(c.env), signupUrl(c.env)));
+  const res = html(homePage(state, loginUrl(c.env), signupUrl(c.env), billingOn(c.env)));
   if (state) res.headers.set("cache-control", "no-store");
   return res;
 });

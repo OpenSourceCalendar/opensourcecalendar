@@ -66,9 +66,12 @@ const WAIT_MSG: Record<Exclude<WaitlistState, null>, string> = {
   bad: "That email address doesn’t look right. Please check it and try again.",
 };
 
-/** `signup` set = open sign-up: plans are "Available now" and every hosted button goes to sign-up; no waitlist form. */
-export function homePage(wait: WaitlistState, login?: string, signup?: string) {
-  const plansNow = PLANS.map((p) => (signup && p.href === "#waitlist" ? { ...p, now: true, cta: "Get started free", href: signup } : p));
+/** `signup` set = open sign-up: hosted buttons go to sign-up instead of the waitlist, and there is no waitlist form. */
+export function homePage(wait: WaitlistState, login?: string, signup?: string, paid = false) {
+  // Open sign-up: Free is available now; Pro and White-label only when this install can bill (`paid`).
+  const plansNow = PLANS.map((p) => (!signup || p.href !== "#waitlist" ? p
+    : p.name === "Free" ? { ...p, now: true, cta: "Get started free", href: signup }
+    : paid ? { ...p, now: true, cta: "Start 14-day trial", href: signup } : p));
   const band = `<div class="wrap hero">
 <div class="hero-text">
 <span class="pill">Open source · AGPL-3.0 · Runs on Cloudflare</span>

@@ -53,7 +53,12 @@ describe("website pages", () => {
     expect(home).toContain('href="https://book.example.test/signup"');
     expect(home).toContain("Get started free");
     expect(home).not.toContain('action="/api/waitlist"');
-    expect(home).not.toContain("Coming soon</span>");
+    expect(home).not.toContain("Start 14-day trial"); // no billing on this install: paid plans stay "Coming soon"
+    expect(home).toContain("Coming soon</span>");
+    const billing = { ...open, STRIPE_SECRET_KEY: "rk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_PRICE_PRO_MONTH: "p1", STRIPE_PRICE_PRO_YEAR: "p2", STRIPE_PRICE_WL_MONTH: "p3", STRIPE_PRICE_WL_YEAR: "p4" };
+    const paid = await (await app.request("/", {}, billing)).text();
+    expect(paid.match(/Start 14-day trial/g)).toHaveLength(2);
+    expect(paid).not.toContain("Coming soon</span>");
     expect(await (await app.request("/privacy", {}, open)).text()).toContain('href="https://book.example.test/signup"');
     const invite = await (await app.request("/", {}, { ...open, SIGNUP: "invite" })).text();
     expect(invite).toContain('action="/api/waitlist"');

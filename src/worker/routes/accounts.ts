@@ -95,7 +95,10 @@ accounts.post("/email-link/verify", async (c) => {
   if (!link) return c.json({ error: "link_expired" }, 400);
   let found: Found | { inviteUsed: true } = await lookUp(db, link.email);
   if (!found && link.inviteHash) found = await createUserWithInvite(db, link.email, undefined, link.inviteHash, now);
-  else if (!found && signupOpen(c.env) && (await newAccountAllowed(db, now))) found = await createUser(db, link.email, undefined, now);
+  else if (!found && signupOpen(c.env)) {
+    if (!(await newAccountAllowed(db, now))) return c.json({ error: "signups_full" }, 400); // only the inbox owner holds the link
+    found = await createUser(db, link.email, undefined, now);
+  }
   if (!found) return c.json({ error: "link_expired" }, 400); // a log-in link for an account deleted since
   if (!("user" in found)) return c.json({ error: "invite_used" }, 400);
   await touchLogin(db, found.user.id, now);
