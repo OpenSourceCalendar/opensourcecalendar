@@ -134,7 +134,8 @@ ${signup ? `<a class="btn btn-light" href="${signup}">Get started free</a>` : `<
 </div>`;
 }
 
-const FOOTER = `<footer><div class="wrap">
+// A function, not a constant: on Workers the clock reads 1970 while the module loads.
+const footer = () => `<footer><div class="wrap">
 <span>© ${new Date().getUTCFullYear()} ${SITE_NAME}</span>
 <nav aria-label="Footer"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${GITHUB_URL}">GitHub</a><a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a></nav>
 </div></footer>`;
@@ -160,7 +161,7 @@ export function page(opts: { title: string; description: string; path: string; b
 </head>
 <body>
 <div class="band">${header(onHome, opts.login, opts.signup)}${opts.band}</div>
-<main id="main" class="sheet">${opts.body}${FOOTER}</main>
+<main id="main" class="sheet">${opts.body}${footer()}</main>
 </body>
 </html>`;
 }

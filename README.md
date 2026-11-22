@@ -36,7 +36,7 @@ Open Source Calendar is an **online booking system** for any business that takes
 
 It runs entirely on **Cloudflare** (Workers, D1, R2 and Email Sending), so there is no server to maintain, and a small business can usually run it within Cloudflare's free tier.
 
-Don't want to host it yourself? Hosted plans are coming at **[opensourcecalendar.com](https://opensourcecalendar.com)**.
+Don't want to host it yourself? Use the hosted version at **[opensourcecalendar.com](https://opensourcecalendar.com)**: a free plan, plus Pro and White-label plans with a 14-day trial.
 
 ## Features
 

@@ -73,6 +73,11 @@ describe("website pages", () => {
     expect(other).not.toContain('role="status"');
   });
 
+  it("shows this year in the footer, not 1970", async () => {
+    const html = await (await app.request("/", {}, siteOn)).text();
+    expect(html).toContain(`© ${new Date().getUTCFullYear()} Open Source Calendar`);
+  });
+
   it("sends www to the bare domain", async () => {
     const res = await app.request("https://www.opensourcecalendar.com/privacy?x=1", {}, env);
     expect(res.status).toBe(301);
