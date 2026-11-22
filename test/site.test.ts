@@ -76,6 +76,7 @@ describe("website pages", () => {
   it("shows this year in the footer, not 1970", async () => {
     const html = await (await app.request("/", {}, siteOn)).text();
     expect(html).toContain(`© ${new Date().getUTCFullYear()} Open Source Calendar`);
+    expect(html).toContain('href="https://fazier.com"'); // Fazier free launch needs this badge
   });
 
   it("sends www to the bare domain", async () => {

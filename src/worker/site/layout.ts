@@ -138,6 +138,8 @@ ${signup ? `<a class="btn btn-light" href="${signup}">Get started free</a>` : `<
 const footer = () => `<footer><div class="wrap">
 <span>© ${new Date().getUTCFullYear()} ${SITE_NAME}</span>
 <nav aria-label="Footer"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${GITHUB_URL}">GitHub</a><a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a></nav>
+<!-- Fazier free-launch badge: their Basic plan requires a visible link back, at least 120px wide. Keep it. -->
+<a href="https://fazier.com" target="_blank" rel="noopener"><img src="https://fazier.com/api/v1/public/badges/launch_badges.svg?badge_type=launched&amp;theme=neutral" width="120" alt="Fazier badge" loading="lazy"></a>
 </div></footer>`;
 
 /** A whole page. `band` is what goes in the brand-colored top after the header; `body` follows in the light sheet. */
